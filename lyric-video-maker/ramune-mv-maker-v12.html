@@ -1782,11 +1782,21 @@ function paramsFromEnergy(e,seed){
   return {motion,deco,style,fx,charSize,charMotion,punch};
 }
 /* 切替演出：絶対的な熱量ではなく「前セクションとの変化量Δe」で選ぶ（11-5末尾）。
-   poolは「派手さの弱い→強い順」の配列。Δeが大きいほど派手な演出を選ぶ。 */
-function pickTransitionForDelta(pool,deltaE){
+   poolは「派手さの弱い→強い順」の配列。Δeの大きさで3層（弱め/中/強め）に振り分けたあと、
+   層の中はseed（セクション名）で決まる固定のばらつきを持たせる。
+   ★理由：層をpool.length段階そのままで割ると、よくある中程度のΔe（じわ上がり）が同じ1マスに
+   集中し、曲中の演出がずっと同じに見えてしまう（実データで確認済み）。層を粗く・層内をばらけさせる
+   ことで、「毎回同じセクションは同じ演出（反復ルール）」を保ちつつ多様性を出す。 */
+function pickTransitionForDelta(pool,deltaE,seed){
   if(!pool||pool.length===0) return "none";
-  const idx=Math.max(0,Math.min(pool.length-1,Math.floor(Math.abs(deltaE)*pool.length)));
-  return pool[idx];
+  const n=pool.length;
+  const ad=Math.abs(deltaE);
+  const tierSize=Math.max(1,Math.ceil(n/3));
+  const tierStart=ad<0.30?0:(ad<0.60?Math.min(n-1,tierSize):Math.min(n-1,tierSize*2));
+  const tierEnd=Math.min(n,tierStart+tierSize);
+  const span=Math.max(1,tierEnd-tierStart);
+  const pick=tierStart+Math.floor(hash01((seed||0)*3.1+7)*span);
+  return pool[Math.min(n-1,pick)];
 }
 /* フックのsignature化（11-6 B）：曲名（クレジットの【曲名】）に含まれる語を歌詞行が含む場合の判定を一般化。
    曲名が無い/短すぎる場合は絵文字系の記号のみで判定（従来の/bubble/iベタ書きを撤廃） */
@@ -2641,7 +2651,7 @@ async function omakaseMV(){ // MV文法（PLAN.md 11章）：熱量エンジン�
     if(i===0) return;
     const first=state.lines[z.idx];
     const deltaE=energies[i]-energies[i-1];
-    first.trans=pickTransitionForDelta(theme.transPool,deltaE);
+    first.trans=pickTransitionForDelta(theme.transPool,deltaE,strSeed(String(z.name).toLowerCase()));
   });
 
   // ★統合タイムラインに直接おまかせ割り振り（各ゾーンの先頭行にbg/ch/fxをセット＝以降へ引き継がれる）
