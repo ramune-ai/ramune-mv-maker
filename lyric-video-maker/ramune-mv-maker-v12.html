@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>らむね式MVメーカー ver.11</title>
+<title>らむね式リリックビデオメーカー ver.12</title>
 <style>
   :root{
     --soda:#2EA8E6; --soda-deep:#1B7FC4; --bubble:#BDE9FF;
@@ -70,8 +70,8 @@
 </head>
 <body>
 <header>
-  <h1>🫧 らむね式MVメーカー <small>ver.11</small></h1>
-  <div class="sub">GB自動透過・字幕自動レイアウト・エフェクト・トランジション・フォント読込 対応</div>
+  <h1>🫧 らむね式リリックビデオメーカー <small>ver.12</small></h1>
+  <div class="sub">GB自動透過・字幕自動レイアウト・エフェクト・トランジション・フォント読込・イージング 対応</div>
 </header>
 
 <main>
@@ -241,6 +241,7 @@
         </select>
       </label>
       <button class="btn ghost" onclick="applyDefaultToAll()">全行をデフォルトに戻す</button>
+      <button class="btn ghost" id="easePinBtn" onclick="toggleEasePanelPin()">🎚 イージングを見る</button>
     </div>
     <div id="easePanel" class="row" style="display:none; border:2px solid #FFD3E6; border-radius:12px; padding:10px; background:#FFFBFD; align-items:flex-start;">
       <canvas id="easeGraph" width="140" height="90" style="border-radius:8px; background:#fff; border:1px solid #E4F3FC; flex-shrink:0;"></canvas>
@@ -280,11 +281,14 @@
 
     <h2 style="margin-top:18px;">キャラの登場（行番号で指定）</h2>
     <div id="charDirect"></div>
-    <p class="note">「9-12, 21-24」のように指定。サイズ：大＝画面ドン（上下はみ出しOK・頭は安全圏に収める）／中＝画面に収まる／小＝ワンポイント。</p>
+    <p class="note">「9-12, 21-24」のように指定。サイズ：大＝画面ドン（上下はみ出しOK・頭は安全圏に収める）／中＝画面に収まる／小＝ワンポイント。
+      ⚠️ 上の「素材タイムライン」でキャラを割り当てている間は、そちらが優先されこの欄の指定は使われません（消えてはいないので安心してください）。
+      素材タイムラインの各ゾーンを「キャラなし」に戻すと、この欄の指定が使われるようになります。</p>
 
     <!-- P0-3: 個別エフェクトの行番号指定は state.fx が正。UIは②のゾーン表／🪄おまかせが自動生成する -->
 
     <h2 style="margin-top:18px;">背景の切り替え（行番号）とトランジション</h2>
+    <p class="note">⚠️ 上の「素材タイムライン」で背景を割り当てると、この欄は自動的に書き換わります（直接編集した内容は上書きされます）。</p>
     <div class="row" style="display:none;">
       <label>背景切替時の演出
         <select id="bgTransition">
@@ -341,7 +345,7 @@
   </section>
 </main>
 
-<footer>らむね式MVメーカー ver.11 ／ サーバー不要・通信ゼロ 🫧</footer>
+<footer>らむね式リリックビデオメーカー ver.12 ／ サーバー不要・通信ゼロ 🫧</footer>
 
 <script>
 "use strict";
@@ -862,9 +866,13 @@ function initEasePanel(){
   $("defaultMotion").addEventListener("change",updateEasePanelVisibility);
   updateEasePanelVisibility();
 }
+let easePanelPinned=false;
+function toggleEasePanelPin(){ easePanelPinned=!easePanelPinned; updateEasePanelVisibility(); }
 function updateEasePanelVisibility(){
-  const on=$("defaultMotion").value==="ease"||state.lines.some(l=>l.motion==="ease");
+  const on=easePanelPinned||$("defaultMotion").value==="ease"||state.lines.some(l=>l.motion==="ease");
   $("easePanel").style.display=on?"flex":"none";
+  $("easePinBtn").textContent=easePanelPinned?"🎚 イージングを隠す":"🎚 イージングを見る";
+  $("easePinBtn").classList.toggle("pink",easePanelPinned);
 }
 function renderEaseParams(){
   const box=$("easeParamsRow"); box.innerHTML="";
@@ -1087,7 +1095,7 @@ function renderSecAssign(){
 function applySecAssign(){ // 「そのまま」は前ゾーンを引き継ぎ／zoneCharsで位置・大きさ・動きもゾーン単位に
   const zs=secZones();
   state.bgs.forEach(b=>b.ranges="");
-  state.chars.forEach(c=>c.ranges="");
+  // ★キャラは state.zoneChars が優先され ch.ranges は描画に使われないため、直接指定欄のデータを消さないよう保持する（バグ修正）
   state.zoneChars=[];
   const fxRanges={bubbles:[],sparkle:[],sakura:[],flare:[]};
   let curBg=null, curCh=null;
