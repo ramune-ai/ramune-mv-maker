@@ -1,0 +1,232 @@
+{
+  "format": "ramune-mv-project",
+  "version": 2,
+  "title": "AI Bubble_mp3",
+  "audioFile": "AI Bubble_mp3.mp3",
+  "exportedAt": "2026-07-09T13:35:07.456Z",
+  "lines": [
+    {
+      "text": "ずっと しまってた 小さな宝物",
+      "time": 10.007,
+      "motion": "default"
+    },
+    {
+      "text": "見ないふりしてた　蓋をそっと開けて",
+      "time": 15.301,
+      "motion": "popin"
+    },
+    {
+      "text": "透きとおる　わたしの色　あぁ",
+      "time": 20.777,
+      "motion": "fuwa"
+    },
+    {
+      "text": "このままで　いいんだ",
+      "time": 26.221,
+      "motion": "zoom"
+    },
+    {
+      "text": "深呼吸したら　からだ軽くなって",
+      "time": 31.675,
+      "motion": "bounce"
+    },
+    {
+      "text": "しゃぼん玉みたい　7色光って",
+      "time": 34.607,
+      "motion": "bounce"
+    },
+    {
+      "text": "角度変えるたび　違う色が見える",
+      "time": 37.211,
+      "motion": "bounce"
+    },
+    {
+      "text": "どれもぜんぶ　わたし",
+      "time": 41.088,
+      "motion": "popin"
+    },
+    {
+      "text": "Ai Bubble ふわり",
+      "time": 43.038,
+      "motion": "default"
+    },
+    {
+      "text": "青空どこまでも　Fly high⭐︎",
+      "time": 47.44,
+      "motion": "default"
+    },
+    {
+      "text": "春の風に　身を任せれば",
+      "time": 53.013,
+      "motion": "default"
+    },
+    {
+      "text": "寄り道だって　全部全部宝物♪",
+      "time": 56.235,
+      "motion": "burst"
+    },
+    {
+      "text": "雨模様なら　屋根の下で",
+      "time": 72.378,
+      "motion": "default"
+    },
+    {
+      "text": "壊れずに　待っていよう",
+      "time": 75.214,
+      "motion": "default"
+    },
+    {
+      "text": "明日の雲に　おねがいして",
+      "time": 77.295,
+      "motion": "default"
+    },
+    {
+      "text": "笑いながら　かけ出す準備",
+      "time": 80.332,
+      "motion": "bounce"
+    },
+    {
+      "text": "移り変わる　自分のカタチ",
+      "time": 83.618,
+      "motion": "default"
+    },
+    {
+      "text": "誰かの正解には　当てはめない",
+      "time": 86.22,
+      "motion": "default"
+    },
+    {
+      "text": "わたしのままで　一番つよい",
+      "time": 88.95,
+      "motion": "default"
+    },
+    {
+      "text": "空を泳ぐように　今を漂う",
+      "time": 91.433,
+      "motion": "default"
+    },
+    {
+      "text": "Ai Bubble きらり",
+      "time": 94.35,
+      "motion": "default"
+    },
+    {
+      "text": "夢のまた夢へも　Fly away⭐︎",
+      "time": 98.723,
+      "motion": "bounce"
+    },
+    {
+      "text": "虹、見れるかな？！　期待しちゃう",
+      "time": 104.281,
+      "motion": "fuwa"
+    },
+    {
+      "text": "その瞬間だって　全部全部宝石♪",
+      "time": 107.46,
+      "motion": "burst"
+    },
+    {
+      "text": "どこまでも行ける 光をまといながら",
+      "time": 124.373,
+      "motion": "default"
+    },
+    {
+      "text": "わたしが わたしで 在るだけでいい",
+      "time": 129.428,
+      "motion": "default"
+    },
+    {
+      "text": "ドキドキも 全部 チカラになる",
+      "time": 135.023,
+      "motion": "default"
+    },
+    {
+      "text": "Ai Bubble…",
+      "time": 147.188,
+      "motion": "fuwa"
+    },
+    {
+      "text": "Ai Bubble ふわり",
+      "time": 148.276,
+      "motion": "burst"
+    },
+    {
+      "text": "青空どこまでも　Fly high⭐︎",
+      "time": 152.611,
+      "motion": "bounce"
+    },
+    {
+      "text": "春の風に　身を任せれば",
+      "time": 158.35,
+      "motion": "bounce"
+    },
+    {
+      "text": "寄り道だって　全部全部宝物♪",
+      "time": 161.364,
+      "motion": "bounce"
+    },
+    {
+      "text": "Ai Bubble きらり",
+      "time": 167.085,
+      "motion": "fuwa"
+    },
+    {
+      "text": "夢のまた夢へも　Fly away⭐︎",
+      "time": 171.487,
+      "motion": "bounce"
+    },
+    {
+      "text": "虹、見れるかな？！　期待しちゃう",
+      "time": 177.135,
+      "motion": "bounce"
+    },
+    {
+      "text": "その瞬間だって　全部全部宝石♪",
+      "time": 180.269,
+      "motion": "bounce"
+    },
+    {
+      "text": "Ai Bubble… きらり",
+      "time": 190.71,
+      "motion": "default"
+    }
+  ],
+  "settings": {
+    "bpm": 150,
+    "beatOffset": 0,
+    "defaultMotion": "popin",
+    "bgs": [],
+    "chars": [
+      {
+        "name": "IMG_0311.jpeg",
+        "ranges": "1-4,25-28",
+        "pos": "center",
+        "size": 1
+      },
+      {
+        "name": "IMG_0314.png",
+        "ranges": "5-8,21-24,33-36",
+        "pos": "right",
+        "size": 1
+      },
+      {
+        "name": "IMG_0316.png",
+        "ranges": "13-16",
+        "pos": "right",
+        "size": 1
+      },
+      {
+        "name": "IMG_0318.png",
+        "ranges": "17-20",
+        "pos": "left",
+        "size": 1.4
+      },
+      {
+        "name": "IMG_0317.png",
+        "ranges": "9-12,29-32,37",
+        "pos": "right",
+        "size": 1
+      }
+    ]
+  }
+}
