@@ -173,6 +173,12 @@
   <section class="panel hidden" id="pane1">
     <h2>🪄 全体おまかせ設定</h2>
     <div class="row">
+      <label>🎨 テーマ（世界観）
+        <select id="themeSelect"></select>
+      </label>
+      <span class="note">文字色・発光・切替演出の傾向をまとめて切り替えます。まずテーマを選んでから、下のおまかせMVを押すのがおすすめ</span>
+    </div>
+    <div class="row">
       <button class="btn pink" onclick="omakaseMV()">🪄 おまかせMV（ぜんぶいい感じにセット）</button>
       <span class="note">間奏行の追加→モーション・エフェクト・デコを自動で割り振ります。あとから個別に直せます</span>
     </div>
@@ -1538,7 +1544,7 @@ function gatherSettings(){
     charPace:$("charPace").value, lyricDeco:$("lyricDeco").value,
     fx:{always:$("fxAlways").value}, // 個別の背景・キャラ・エフェクトは行タイムライン(state.lines[].bg/ch/fx)側が正
     easeDefault:{...state.easeDefault}, easeApply:!!state.easeApply,
-    textStyle:{...state.textStyle},
+    textStyle:{...state.textStyle}, currentTheme:state.currentTheme,
     bgs:state.bgs.map(b=>({name:b.name})),
     chars:state.chars.map(c=>({name:c.name,keyMode:c.keyMode,keyStrength:c.keyStrength})),
   };
@@ -1561,7 +1567,9 @@ function applySettings(s){
   if(s.easeDefault) Object.assign(state.easeDefault,s.easeDefault); // v12のみ（無ければ既定値のまま）
   if(typeof s.easeApply==="boolean") state.easeApply=s.easeApply;
   if(s.textStyle) Object.assign(state.textStyle,s.textStyle); // v12のみ（無ければ既定値のまま）
+  if(s.currentTheme&&THEMES[s.currentTheme]) state.currentTheme=s.currentTheme;
   if(document.readyState!=="loading"&&$("tsColor")) initTextStylePanel();
+  if($("themeSelect")) $("themeSelect").value=state.currentTheme;
   migrateLegacyToLines(s); // ★旧・素材タイムライン(secAssign)／さらに古い直接レンジ指定を行タイムラインへ変換
   if(Array.isArray(s.chars)) s.chars.forEach(sc=>{
     const c=state.chars.find(x=>x.name===sc.name);
@@ -1682,6 +1690,41 @@ function toggleTextStylePanel(){
 }
 document.addEventListener("DOMContentLoaded",initTextStylePanel);
 if(document.readyState!=="loading") initTextStylePanel();
+
+/* --- F2 P3-4：テーマプリセット（世界観をまとめて切り替え） --- */
+const THEMES={
+  ramune:{label:"🫧 ラムネ（標準）",
+    textStyle:{color:"#1B6FA8",colorOverlay:"#E2447E",stroke:"#FFFFFF",strokeWidth:0.14,glow:false,glowColor:"#FFD64F",glowBlur:0.35},
+    transPool:["rings","stripes","diamonds","cloud","checker","diag","bubbleup"], deco:"random"},
+  neon:{label:"💠 ネオン",
+    textStyle:{color:"#00E5FF",colorOverlay:"#FF2FD6",stroke:"#0A0A2A",strokeWidth:0.12,glow:true,glowColor:"#00E5FF",glowBlur:0.5},
+    transPool:["circle","white","bubbles","rings"], deco:"burst"},
+  retro:{label:"🌇 レトロポップ",
+    textStyle:{color:"#FF6B35",colorOverlay:"#FFC300",stroke:"#FFFFFF",strokeWidth:0.16,glow:false,glowColor:"#FFD64F",glowBlur:0.35},
+    transPool:["checker","stripes","diamonds"], deco:"diamond"},
+  mono:{label:"⚫ モノクロ",
+    textStyle:{color:"#222222",colorOverlay:"#555555",stroke:"#FFFFFF",strokeWidth:0.16,glow:false,glowColor:"#FFD64F",glowBlur:0.35},
+    transPool:["white","circle","cloud"], deco:"square"},
+};
+state.currentTheme="ramune";
+function initThemeSelect(){
+  const sel=$("themeSelect"); if(!sel) return;
+  sel.innerHTML="";
+  for(const k in THEMES){ const o=document.createElement("option"); o.value=k; o.textContent=THEMES[k].label; sel.appendChild(o); }
+  sel.value=state.currentTheme;
+  sel.onchange=()=>{ applyTheme(sel.value); };
+}
+function applyTheme(key){
+  const th=THEMES[key]; if(!th) return;
+  state.currentTheme=key;
+  Object.assign(state.textStyle,th.textStyle);
+  if($("themeSelect")) $("themeSelect").value=key;
+  if($("tsColor")) initTextStylePanel();
+  drawFrame(effT());
+}
+document.addEventListener("DOMContentLoaded",initThemeSelect);
+if(document.readyState!=="loading") initThemeSelect();
+
 function easeOf(l){ return (l&&l.ease)?{...state.easeDefault,...l.ease}:state.easeDefault; }
 function easeFnOf(l){
   const cfg=easeOf(l);
@@ -2511,11 +2554,12 @@ async function omakaseMV(){
   _undoSuppress=false;
   $("charPace").value="phrase";
   $("lyricStyle").value="auto";
-  $("lyricDeco").value="random";
+  const theme=THEMES[state.currentTheme]||THEMES.ramune;
+  $("lyricDeco").value=theme.deco;
 
   const bs=sectionBoundaries();
-  const FLASHY=["rings","stripes","diamonds","cloud","checker","diag","bubbleup"];
-  bs.forEach((b,i)=>{ if(i>0) b.line.trans=FLASHY[Math.floor(hash01(i*17+3)*FLASHY.length)]; }); // セクション境目に派手な切替演出
+  const FLASHY=theme.transPool;
+  bs.forEach((b,i)=>{ if(i>0) b.line.trans=FLASHY[Math.floor(hash01(i*17+3)*FLASHY.length)]; }); // セクション境目に派手な切替演出（テーマの傾向から選ぶ）
 
   // ★統合タイムラインに直接おまかせ割り振り（各ゾーンの先頭行にbg/ch/fxをセット＝以降へ引き継がれる）
   const zs=secZones();
