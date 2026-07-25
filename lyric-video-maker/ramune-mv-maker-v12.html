@@ -862,14 +862,23 @@ function renderLineList(){
         hd.append(lab,sel);
       }
       const mkLbl=(text,el)=>{ const w=document.createElement("label"); w.className="note"; w.style.cssText="display:flex;align-items:center;gap:3px;"; w.append(text,el); return w; };
-      hd.append(
-        mkLbl("背景",mkFieldSel(l,bgFieldOpts(),"bg",{fullRerender:true})),
-        mkLbl("キャラ",mkFieldSel(l,chFieldOpts(),"ch",{fullRerender:true})),
-        mkLbl("位置",mkFieldSel(l,POS_OPTS,"chPos",{emptyValue:"right"})),
-        mkLbl("大きさ",mkFieldSel(l,SIZE_OPTS,"chSize",{emptyValue:"1"})),
-        mkLbl("動き",mkFieldSel(l,CMO_OPTS,"chMotion",{emptyValue:"sway"})),
-        mkLbl("FX",mkFieldSel(l,FX_OPTS,"fx"))
-      );
+      if(l.gap){
+        // 間奏などは歌詞本文を持たず、素材を設定できる場所がここしかないためフル項目
+        hd.append(
+          mkLbl("背景",mkFieldSel(l,bgFieldOpts(),"bg",{fullRerender:true})),
+          mkLbl("キャラ",mkFieldSel(l,chFieldOpts(),"ch",{fullRerender:true})),
+          mkLbl("位置",mkFieldSel(l,POS_OPTS,"chPos",{emptyValue:"right"})),
+          mkLbl("大きさ",mkFieldSel(l,SIZE_OPTS,"chSize",{emptyValue:"1"})),
+          mkLbl("動き",mkFieldSel(l,CMO_OPTS,"chMotion",{emptyValue:"sway"})),
+          mkLbl("FX",mkFieldSel(l,FX_OPTS,"fx"))
+        );
+      }else{
+        // セクション見出しは直下の最初の歌詞行と同じデータを指すため、切替演出だけに絞る
+        // （背景・キャラ・FXは直下の行を開いて設定すればセクション全体に引き継がれる）
+        const hint=document.createElement("span"); hint.className="note";
+        hint.textContent="↓直下の行を開くと背景・キャラ・FXをこのセクション全体に設定できます";
+        hd.appendChild(hint);
+      }
       hd.onclick=()=>{ if(typeof renderMini==="function") renderMini(Math.max(0,lineTime(l)-0.5)); };
       box.appendChild(hd);
       if(!l.gap) prevSec=l.section;
