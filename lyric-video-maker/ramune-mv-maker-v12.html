@@ -54,6 +54,21 @@
   .lrow .t{width:76px; font-variant-numeric:tabular-nums; color:var(--soda-deep); font-weight:700; flex-shrink:0;}
   .lrow .txt{flex:1 1 220px; min-width:160px; white-space:normal; word-break:break-word;}
   .lrow select{font-size:.8rem; padding:1px 4px;}
+  .lrow-acc{border-bottom:1px solid #EFF8FE;}
+  .lrow-acc.odd{background:#FBFEFF;}
+  .lrow-acc summary{cursor:pointer; list-style:none;}
+  .lrow-acc summary::-webkit-details-marker{display:none;}
+  .lrow-acc summary::before{content:"▸"; color:#9FBCCB; font-size:.7rem; width:14px; flex-shrink:0; display:inline-block;}
+  .lrow-acc[open] summary::before{content:"▾";}
+  .lrow-acc summary.lrow{border-bottom:none;}
+  .exgrid{display:grid; grid-template-columns:1fr 1fr; gap:6px 16px; padding:6px 14px 14px 32px;}
+  @media (max-width:640px){ .exgrid{grid-template-columns:1fr;} }
+  .exhead{font-size:.72rem; font-weight:800; padding:2px 8px; border-radius:6px; margin-bottom:2px; width:fit-content;}
+  .exhead.c-blue{background:#DFF2FE; color:var(--soda-deep);}
+  .exhead.c-pink{background:#FFE6F0; color:#B23368;}
+  .exrow{display:flex; align-items:center; gap:8px; padding:2px 0;}
+  .exlabel{min-width:56px; color:#5A7B8E; font-size:.75rem; flex-shrink:0;}
+  .exrow select{flex:1; font-size:.8rem; padding:3px 4px;}
   #pvWrap{position:relative; background:#000; border-radius:12px; overflow:hidden; aspect-ratio:16/9;}
   #pvCanvas{width:100%; height:100%; display:block;}
   #recBadge{position:absolute; top:10px; left:10px; background:#E7483D; color:#fff; font-weight:800;
@@ -210,12 +225,12 @@
       </label>
     </div>
 
-    <h2 style="margin-top:18px;">🎞 演出＋素材タイムライン（行ごとにまとめて編集）</h2>
+    <h2 style="margin-top:18px;">🎞 文字演出＋素材タイムライン（行ごとにまとめて編集）</h2>
     <p class="note" style="margin:0 0 6px;">各行：<b>モーション／デコ／配置／背景／キャラ／エフェクト</b>を選べます。空欄「（引継）」はひとつ上の行から続けるという意味です。
       ［セクション名］や（間奏）の行はまとめ役：ここで背景・キャラ・エフェクトの初期値を置くと、次の見出しまでの行に引き継がれます。
       行クリック→上のミニプレビューでその瞬間を確認できます。</p>
     <div class="row" style="border:2px solid #CFEAF9; border-radius:12px; padding:8px 10px; align-items:center;">
-      <span class="note" style="font-weight:800; color:var(--soda-deep);">全行の既定値：</span>
+      <span class="note" style="font-weight:800; color:var(--soda-deep);">全行の既定値（文字演出）：</span>
       <label>モーション
         <select id="defaultMotion">
           <option value="popin">ポップイン（1文字ずつぽよん）</option>
@@ -860,31 +875,38 @@ function renderLineList(){
     }
     if(l.gap) return; // 間奏などは見出し行のみで完結（歌詞本文が無いので通常行は作らない）
 
-    const row=document.createElement("div"); row.className="lrow"; row.style.flexWrap="wrap";
+    // 通常の歌詞行：折りたたみ式（普段は歌詞だけ・クリックで文字演出／素材の編集欄を展開）
+    const row=document.createElement("details"); row.className="lrow-acc"+(i%2?" odd":"");
+    const sum=document.createElement("summary"); sum.className="lrow";
     const no=document.createElement("span"); no.className="no"; no.textContent=(i+1);
     const t=document.createElement("span"); t.className="t"; t.textContent=fmt(l.time);
     const txt=document.createElement("span"); txt.className="txt"; txt.textContent=l.text;
-    row.append(no,t,txt,
-      mkFieldSel(l,Object.entries(MOTIONS),"motion",{emptyValue:"default"}),
-      mkFieldSel(l,Object.entries(DECO_SEL),"deco",{emptyValue:"default"}),
-      mkFieldSel(l,Object.entries(STYLE_SEL),"style",{emptyValue:"default"}),
-      mkFieldSel(l,bgFieldOpts(),"bg",{fullRerender:true}),
-      mkFieldSel(l,chFieldOpts(),"ch",{fullRerender:true}),
-      mkFieldSel(l,FX_OPTS,"fx")
+    sum.append(no,t,txt);
+    sum.onclick=()=>{ if(typeof renderMini==="function") renderMini(lineTime(l)); };
+    row.appendChild(sum);
+
+    const mkExHead=(label,cls)=>{ const h=document.createElement("div"); h.className="exhead "+cls; h.textContent=label; return h; };
+    const mkExRow=(label,el)=>{ const r=document.createElement("div"); r.className="exrow"; const lb=document.createElement("span"); lb.className="exlabel"; lb.textContent=label; r.append(lb,el); return r; };
+    const grid=document.createElement("div"); grid.className="exgrid";
+    const col1=document.createElement("div"); col1.className="excol";
+    col1.append(
+      mkExHead("文字演出","c-blue"),
+      mkExRow("モーション",mkFieldSel(l,Object.entries(MOTIONS),"motion",{emptyValue:"default"})),
+      mkExRow("デコ",mkFieldSel(l,Object.entries(DECO_SEL),"deco",{emptyValue:"default"})),
+      mkExRow("配置",mkFieldSel(l,Object.entries(STYLE_SEL),"style",{emptyValue:"default"}))
     );
-    const det=document.createElement("details"); det.style.cssText="display:inline-block;";
-    det.onclick=e=>e.stopPropagation();
-    const sum=document.createElement("summary"); sum.className="note"; sum.style.cssText="cursor:pointer;"; sum.textContent="🧍詳細";
-    det.appendChild(sum);
-    const detRow=document.createElement("div"); detRow.style.cssText="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;";
-    detRow.append(
-      mkFieldSel(l,POS_OPTS,"chPos",{emptyValue:"right"}),
-      mkFieldSel(l,SIZE_OPTS,"chSize",{emptyValue:"1"}),
-      mkFieldSel(l,CMO_OPTS,"chMotion",{emptyValue:"sway"})
+    const col2=document.createElement("div"); col2.className="excol";
+    col2.append(
+      mkExHead("素材","c-pink"),
+      mkExRow("背景",mkFieldSel(l,bgFieldOpts(),"bg",{fullRerender:true})),
+      mkExRow("キャラ",mkFieldSel(l,chFieldOpts(),"ch",{fullRerender:true})),
+      mkExRow("位置",mkFieldSel(l,POS_OPTS,"chPos",{emptyValue:"right"})),
+      mkExRow("大きさ",mkFieldSel(l,SIZE_OPTS,"chSize",{emptyValue:"1"})),
+      mkExRow("動き",mkFieldSel(l,CMO_OPTS,"chMotion",{emptyValue:"sway"})),
+      mkExRow("エフェクト",mkFieldSel(l,FX_OPTS,"fx"))
     );
-    det.appendChild(detRow);
-    row.appendChild(det);
-    row.onclick=()=>{ if(typeof renderMini==="function") renderMini(lineTime(l)); };
+    grid.append(col1,col2);
+    row.appendChild(grid);
     box.appendChild(row);
   });
   if(state.lines.length===0) box.innerHTML='<div class="lrow"><span class="note">①でJSONを読み込んでね</span></div>';
