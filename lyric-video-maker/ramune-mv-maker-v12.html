@@ -209,8 +209,24 @@
         </select>
       </label>
     </div>
-    <div class="row">
-      <label>歌詞デコ（文字のまわりに図形ぽんっ）
+
+    <h2 style="margin-top:18px;">🎞 演出＋素材タイムライン（行ごとにまとめて編集）</h2>
+    <p class="note" style="margin:0 0 6px;">各行：<b>モーション／デコ／配置／背景／キャラ／エフェクト</b>を選べます。空欄「（引継）」はひとつ上の行から続けるという意味です。
+      ［セクション名］や（間奏）の行はまとめ役：ここで背景・キャラ・エフェクトの初期値を置くと、次の見出しまでの行に引き継がれます。
+      行クリック→上のミニプレビューでその瞬間を確認できます。</p>
+    <div class="row" style="border:2px solid #CFEAF9; border-radius:12px; padding:8px 10px; align-items:center;">
+      <span class="note" style="font-weight:800; color:var(--soda-deep);">全行の既定値：</span>
+      <label>モーション
+        <select id="defaultMotion">
+          <option value="popin">ポップイン（1文字ずつぽよん）</option>
+          <option value="bounce">ビートバウンス（拍で弾む）</option>
+          <option value="zoom">じわズーム（じわ〜っと拡大）</option>
+          <option value="burst">文字弾け（キラッと弾ける）</option>
+          <option value="slide">スローイン・アウト（枠外から流れる）</option>
+          <option value="fuwa">ふわっと（やさしく漂う）</option>
+        </select>
+      </label>
+      <label>デコ
         <select id="lyricDeco">
           <option value="none">なし</option>
           <option value="random">おまかせランダム</option>
@@ -221,31 +237,12 @@
           <option value="diamond">ダイヤ</option>
         </select>
       </label>
-    </div>
-    <div class="row">
-      <label>字幕スタイル
+      <label>配置
         <select id="lyricStyle">
           <option value="auto">すきま配置（キャラをよけて空白に置く）</option>
           <option value="bottom">中央やや下（定番）</option>
           <option value="overlay">キャラ被せ（ドン！と目立つ）</option>
           <option value="arc">円形アーチ（キャラの周り）</option>
-        </select>
-      </label>
-    </div>
-
-    <h2 style="margin-top:18px;">🎞 演出＋素材タイムライン（行ごとにまとめて編集）</h2>
-    <p class="note" style="margin:0 0 6px;">各行：<b>モーション／デコ／配置／背景／キャラ／エフェクト</b>を選べます。空欄「（引継）」はひとつ上の行から続けるという意味です。
-      ［セクション名］や（間奏）の行はまとめ役：ここで背景・キャラ・エフェクトの初期値を置くと、次の見出しまでの行に引き継がれます。
-      行クリック→上のミニプレビューでその瞬間を確認できます。</p>
-    <div class="row">
-      <label>全体のデフォルト
-        <select id="defaultMotion">
-          <option value="popin">ポップイン（1文字ずつぽよん）</option>
-          <option value="bounce">ビートバウンス（拍で弾む）</option>
-          <option value="zoom">じわズーム（じわ〜っと拡大）</option>
-          <option value="burst">文字弾け（キラッと弾ける）</option>
-          <option value="slide">スローイン・アウト（枠外から流れる）</option>
-          <option value="fuwa">ふわっと（やさしく漂う）</option>
         </select>
       </label>
       <button class="btn ghost" onclick="applyDefaultToAll()">全行をデフォルトに戻す</button>
