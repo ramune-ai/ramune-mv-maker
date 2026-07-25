@@ -237,15 +237,17 @@
           <option value="burst">文字弾け（キラッと弾ける）</option>
           <option value="slide">スローイン・アウト（枠外から流れる）</option>
           <option value="fuwa">ふわっと（やさしく漂う）</option>
-          <option value="ease">🆕 イージング指定（下で細かく調整）</option>
         </select>
       </label>
       <button class="btn ghost" onclick="applyDefaultToAll()">全行をデフォルトに戻す</button>
-      <button class="btn ghost" id="easePinBtn" onclick="toggleEasePanelPin()">🎚 イージングを見る</button>
+      <button class="btn ghost" id="easePinBtn" onclick="toggleEasePanelPin()">🎚 イージング設定</button>
     </div>
     <div id="easePanel" class="row" style="display:none; border:2px solid #FFD3E6; border-radius:12px; padding:10px; background:#FFFBFD; align-items:flex-start;">
       <canvas id="easeGraph" width="140" height="90" style="border-radius:8px; background:#fff; border:1px solid #E4F3FC; flex-shrink:0;"></canvas>
       <div style="flex:1; min-width:220px;">
+        <div class="row" style="margin:0 0 6px; align-items:center;">
+          <label style="font-weight:800;"><input type="checkbox" id="easeApplyChk" style="width:auto;"> 上のポップイン等モーションの「動き出し方」をこの曲線に差し替える</label>
+        </div>
         <div class="row" style="margin:0 0 6px;">
           <label>イージング
             <select id="easeFamily"></select>
@@ -257,7 +259,8 @@
           </label>
         </div>
         <div class="row" id="easeParamsRow"></div>
-        <span class="note">モーションで「🆕 イージング指定」を選んだ行に適用されます（曲線はここで一括調整・全行共通）</span>
+        <span class="note">✅チェックすると全モーション共通で「動き出しの速さ」だけがこの曲線に変わります（ポップイン等の見た目自体は消えません）。
+          チェックを外せば元通り。曲線はここで一括調整・全行共通です。</span>
       </div>
     </div>
     <div class="row">
@@ -797,7 +800,7 @@ function renderCharList(){
 }
 
 /* ================= ② 演出指定 ================= */
-const MOTIONS={default:"（デフォルト）",popin:"ポップイン",bounce:"ビートバウンス",zoom:"じわズーム",burst:"文字弾け",slide:"スローイン・アウト",fuwa:"ふわっと（やさしく漂う）",ease:"🆕 イージング指定（下の②で細かく調整）"};
+const MOTIONS={default:"（デフォルト）",popin:"ポップイン",bounce:"ビートバウンス",zoom:"じわズーム",burst:"文字弾け",slide:"スローイン・アウト",fuwa:"ふわっと（やさしく漂う）"};
 function renderLineList(){
   const box=$("lineList"); box.innerHTML="";
   let prevSec=null;
@@ -860,18 +863,18 @@ function initEasePanel(){
   for(const [k,lab] of Easing.FAMILIES){ const o=document.createElement("option"); o.value=k; o.textContent=lab; sel.appendChild(o); }
   sel.value=state.easeDefault.family;
   $("easeDir").value=state.easeDefault.dir;
+  $("easeApplyChk").checked=!!state.easeApply;
   renderEaseParams(); drawEaseGraph();
   sel.onchange=()=>{ state.easeDefault.family=sel.value; renderEaseParams(); drawEaseGraph(); };
   $("easeDir").onchange=()=>{ state.easeDefault.dir=$("easeDir").value; drawEaseGraph(); };
-  $("defaultMotion").addEventListener("change",updateEasePanelVisibility);
+  $("easeApplyChk").onchange=()=>{ state.easeApply=$("easeApplyChk").checked; drawFrame(effT()); };
   updateEasePanelVisibility();
 }
 let easePanelPinned=false;
 function toggleEasePanelPin(){ easePanelPinned=!easePanelPinned; updateEasePanelVisibility(); }
 function updateEasePanelVisibility(){
-  const on=easePanelPinned||$("defaultMotion").value==="ease"||state.lines.some(l=>l.motion==="ease");
-  $("easePanel").style.display=on?"flex":"none";
-  $("easePinBtn").textContent=easePanelPinned?"🎚 イージングを隠す":"🎚 イージングを見る";
+  $("easePanel").style.display=easePanelPinned?"flex":"none";
+  $("easePinBtn").textContent=easePanelPinned?"🎚 イージング設定を隠す":"🎚 イージング設定";
   $("easePinBtn").classList.toggle("pink",easePanelPinned);
 }
 function renderEaseParams(){
@@ -1280,30 +1283,52 @@ function drawSectionFx(t){
 function renderCharDirect(){
   const box=$("charDirect"); box.innerHTML="";
   if(state.chars.length===0){ box.innerHTML='<span class="note">①でキャラ画像を追加してね</span>'; return; }
+  const zoneActive=!!(state.zoneChars&&state.zoneChars.length); // 素材タイムラインが使われている＝おまかせMV／ゾーン表操作後
+  if(zoneActive){
+    const info=document.createElement("div"); info.className="note";
+    info.style.cssText="margin-bottom:6px;";
+    info.textContent="🎬 素材タイムラインでキャラが割り当てられています。下の数字は自動計算された結果です（グレー＝直接編集不可）。編集したい場合は上のゾーン表を「キャラなし」に戻してください。";
+    box.appendChild(info);
+  }
   state.chars.forEach(ch=>{
     const c=document.createElement("div"); c.className="card";
     const im=document.createElement("img"); im.className="thumb char";
     im.src=(ch.keyMode!=="none"&&ch.imgKeyed)?ch.imgKeyed.toDataURL():ch.imgRaw.src;
     const nm=document.createElement("span"); nm.textContent=ch.name; nm.style.minWidth="110px";
     const rng=document.createElement("input"); rng.type="text"; rng.placeholder="例: 9-12, 21-24 / all";
-    rng.value=ch.ranges; rng.style.width="170px";
-    rng.addEventListener("focus",()=>pushUndo(),{once:true});
-    rng.oninput=()=>{ ch.ranges=rng.value; };
+    rng.style.width="170px";
+    if(zoneActive){
+      const zr=state.zoneChars.filter(z=>z.name===ch.name).map(z=>z.a===z.z?String(z.a):z.a+"-"+z.z).join(", ");
+      rng.value=zr||"（このキャラは未登場）";
+      rng.disabled=true; rng.style.opacity=".65"; rng.style.background="#F1F5F8";
+      rng.title="素材タイムラインによる自動計算値（直接編集するにはゾーン表を「キャラなし」に戻してください）";
+    }else{
+      rng.value=ch.ranges;
+      rng.addEventListener("focus",()=>pushUndo(),{once:true});
+      rng.oninput=()=>{ ch.ranges=rng.value; };
+    }
     const pos=document.createElement("select");
     [["left","左"],["center","中央"],["right","右"]].forEach(([v,lab])=>{
       const o=document.createElement("option"); o.value=v; o.textContent=lab; pos.appendChild(o);
     });
-    pos.value=ch.pos; pos.onchange=()=>{ pushUndo(); ch.pos=pos.value; };
     const sz=document.createElement("select");
     [["0.7","小"],["1","中"],["1.4","大"]].forEach(([v,lab])=>{
       const o=document.createElement("option"); o.value=v; o.textContent=lab; sz.appendChild(o);
     });
-    sz.value=String(ch.size); sz.onchange=()=>{ pushUndo(); ch.size=parseFloat(sz.value); };
     const mo=document.createElement("select");
     [["bounce","跳ねる"],["sway","ふわふわ"],["still","静止"]].forEach(([v,lab])=>{
       const o=document.createElement("option"); o.value=v; o.textContent=lab; mo.appendChild(o);
     });
-    mo.value=ch.cmotion||"sway"; mo.onchange=()=>{ pushUndo(); ch.cmotion=mo.value; };
+    if(zoneActive){
+      // ゾーンごとの値が異なる可能性があるため、実際に使われている値を（複数あれば代表1件を）表示するだけにする
+      const zcs=state.zoneChars.filter(z=>z.name===ch.name);
+      pos.value=zcs[0]?.pos||ch.pos; sz.value=String(zcs[0]?.size||ch.size); mo.value=zcs[0]?.cmo||ch.cmotion||"sway";
+      [pos,sz,mo].forEach(el=>{ el.disabled=true; el.style.opacity=".65"; el.title="素材タイムラインのゾーン表で設定します（ここでは編集できません）"; });
+    }else{
+      pos.value=ch.pos; pos.onchange=()=>{ pushUndo(); ch.pos=pos.value; };
+      sz.value=String(ch.size); sz.onchange=()=>{ pushUndo(); ch.size=parseFloat(sz.value); };
+      mo.value=ch.cmotion||"sway"; mo.onchange=()=>{ pushUndo(); ch.cmotion=mo.value; };
+    }
     c.append(im,nm,rng,pos,sz,mo); box.appendChild(c);
   });
 }
@@ -1474,7 +1499,7 @@ function gatherSettings(){
     charPace:$("charPace").value, lyricDeco:$("lyricDeco").value,
     bgTransition:$("bgTransition").value,
     fx:{...state.fx, always:$("fxAlways").value},
-    easeDefault:{...state.easeDefault},
+    easeDefault:{...state.easeDefault}, easeApply:!!state.easeApply,
     secAssign:state.secAssign,
     bgs:state.bgs.map(b=>({name:b.name,ranges:b.ranges||""})),
     chars:state.chars.map(c=>({name:c.name,ranges:c.ranges,pos:c.pos,size:c.size,keyMode:c.keyMode,keyStrength:c.keyStrength,cmotion:c.cmotion})),
@@ -1501,6 +1526,7 @@ function applySettings(s){
     if(s.fx.always!==undefined){ state.fx.always=s.fx.always; $("fxAlways").value=s.fx.always; }
   }
   if(s.easeDefault) Object.assign(state.easeDefault,s.easeDefault); // v12のみ（無ければ既定値のまま）
+  if(typeof s.easeApply==="boolean") state.easeApply=s.easeApply;
   if(s.secAssign) state.secAssign=s.secAssign;
   if(Array.isArray(s.bgs)) s.bgs.forEach(sb=>{
     const b=state.bgs.find(x=>x.name===sb.name);
@@ -1512,7 +1538,7 @@ function applySettings(s){
       if(sc.keyMode!==undefined){ c.keyMode=sc.keyMode; c.imgKeyed=(c.keyMode==="none")?null:chromaKey(c.imgRaw,c.keyStrength,c.keyMode); } }
   });
   renderBgDirect(); renderCharDirect(); renderCharList();
-  if($("easeFamily")&&$("easeFamily").options.length){ $("easeFamily").value=state.easeDefault.family; $("easeDir").value=state.easeDefault.dir; renderEaseParams(); drawEaseGraph(); updateEasePanelVisibility(); }
+  if($("easeFamily")&&$("easeFamily").options.length){ $("easeFamily").value=state.easeDefault.family; $("easeDir").value=state.easeDefault.dir; $("easeApplyChk").checked=!!state.easeApply; renderEaseParams(); drawEaseGraph(); updateEasePanelVisibility(); }
 }
 
 /* ================= Undo / Redo（P0-3：演出編集の取り消し） ================= */
@@ -1601,6 +1627,7 @@ function decoOf(l){ return (l.deco&&l.deco!=="default")?l.deco:$("lyricDeco").va
 function styleOf(l){ return (l.style&&l.style!=="default")?l.style:$("lyricStyle").value; }
 /* --- イージング指定（P0-1）：グローバル既定＋行ごとの上書き --- */
 state.easeDefault={family:"back",dir:"out",outPct:33,inPct:33,overshoot:1.7,amp:1,period:0.3,stiffness:170,damping:14,n:4,jump:"end",x1:0.42,y1:0,x2:0.58,y2:1};
+state.easeApply=false; // OFFなら各モーションは元の挙動そのまま。ONで動き出しの速さをイージング曲線に差し替える
 function easeOf(l){ return (l&&l.ease)?{...state.easeDefault,...l.ease}:state.easeDefault; }
 function easeFnOf(l){
   const cfg=easeOf(l);
@@ -2140,10 +2167,16 @@ function drawLyric(t,lineIdx){
     }
   }
 
+  // 🎚 イージング設定：チェックONのときだけ、各モーションの「動き出しの速さ」をエンジンのカーブに差し替える
+  //   （モーションそのものの見た目＝popin/bounce等の形は変えず、進み方だけ差し替える。OFF時は完全に元の挙動）
+  const shapeP=state.easeApply
+    ? (()=>{ const ef=easeFnOf(line); return raw=>Math.max(0,Math.min(1.3,ef(Math.max(0,Math.min(1,raw))))); })()
+    : (raw=>raw);
+
   // スローイン・アウト用：行全体の横流れ（連続カーブでカクつきゼロ）
   let lineDx=0, lineAlpha=1;
   if(motion==="slide"){
-    const prog=Math.max(0,Math.min(1,(t-t0)/Math.max(0.001,tEnd-t0)));
+    const prog=shapeP(Math.max(0,Math.min(1,(t-t0)/Math.max(0.001,tEnd-t0))));
     const IN=0.16, OUT=0.84, A=CW*0.85;
     const dir=(lineIdx%2===0)?1:-1; // 行ごとに 左→右 / 右→左 を交互（通り抜け）
     const easeO=x=>1-Math.pow(1-x,4), easeI=x=>Math.pow(x,4);
@@ -2162,32 +2195,26 @@ function drawLyric(t,lineIdx){
     switch(motion){
       case "popin":{
         const tk2=tk-0.06; // 体感の遅れ補正：少し早めに出す
-        if(t>=tk2){draw=true;const p=Math.min(1,(t-tk2)/0.14);
-          sc=1+0.5*(1-p)*Math.sin(p*Math.PI); alpha=Math.min(1,p*1.6);} break;}
+        if(t>=tk2){draw=true;const p=shapeP(Math.min(1,(t-tk2)/0.14));
+          sc=1+0.5*(1-p)*Math.sin(p*Math.PI); alpha=Math.max(0,Math.min(1,p*1.6));} break;}
       case "bounce":
-        if(t>=tk){draw=true;const p=Math.min(1,(t-tk)/POP);
+        if(t>=tk){draw=true;const p=shapeP(Math.min(1,(t-tk)/POP));
           sc=(1+0.5*(1-p)*Math.sin(p*Math.PI))*(1+(bounce-0.5)*0.05);
-          alpha=Math.min(1,p*1.6); dy=-bounce*fs*0.22;} break;
+          alpha=Math.max(0,Math.min(1,p*1.6)); dy=-bounce*fs*0.22;} break;
       case "fuwa":{
-        const p=Math.min(1,(t-t0)/0.5);
-        if(p>0){draw=true;alpha=p;dy=Math.sin(t*1.6+k*0.45)*fs*0.10;} break;}
+        const p=shapeP(Math.min(1,(t-t0)/0.5));
+        if(p>0){draw=true;alpha=Math.max(0,Math.min(1,p));dy=Math.sin(t*1.6+k*0.45)*fs*0.10;} break;}
       case "zoom":{
-        const p=Math.min(1,(t-t0)/0.6);
-        if(p>0){draw=true;alpha=p;sc=0.96+0.10*Math.min(1,(t-t0)/(tEnd-t0));} break;}
+        const p=shapeP(Math.min(1,(t-t0)/0.6));
+        if(p>0){draw=true;alpha=Math.max(0,Math.min(1,p));sc=0.96+0.10*shapeP(Math.min(1,(t-t0)/(tEnd-t0)));} break;}
       case "burst":
-        if(t>=tk){draw=true;const p=Math.min(1,(t-tk)/POP);
-          sc=1+0.8*(1-p)*Math.sin(p*Math.PI); alpha=Math.min(1,p*1.8);
+        if(t>=tk){draw=true;const p=shapeP(Math.min(1,(t-tk)/POP));
+          sc=1+0.8*(1-p)*Math.sin(p*Math.PI); alpha=Math.max(0,Math.min(1,p*1.8));
           if(p<0.5&&(lastSparkLine!==lineIdx||lastSparkChar<k)){
             addSparks(P.x,P.y,fs); lastSparkLine=lineIdx; lastSparkChar=k;
           }} break;
       case "slide":
         if(t>=t0){draw=true; alpha=lineAlpha;} break;
-      case "ease":{ // 🆕 イージングエンジン駆動：選んだ曲線でスケール＋フェードイン
-        if(t>=tk){draw=true;
-          const ef=easeFnOf(line), DUR=0.32;
-          const p=ef(Math.min(1,(t-tk)/DUR));
-          sc=0.4+0.6*p; alpha=Math.max(0,Math.min(1,p));
-        } break;}
     }
     if(draw){
       ctx.save();
