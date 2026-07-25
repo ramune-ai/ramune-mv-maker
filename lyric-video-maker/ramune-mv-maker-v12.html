@@ -264,6 +264,16 @@
       </label>
       <button class="btn ghost" onclick="applyDefaultToAll()">全行をデフォルトに戻す</button>
       <button class="btn ghost" id="easePinBtn" onclick="toggleEasePanelPin()">🎚 イージング設定</button>
+      <button class="btn ghost" id="textStylePinBtn" onclick="toggleTextStylePanel()">🎨 文字の見た目</button>
+    </div>
+    <div id="textStylePanel" class="row" style="display:none; border:2px solid #FFD3E6; border-radius:12px; padding:10px; background:#FFFBFD; align-items:center;">
+      <label class="note">文字色 <input type="color" id="tsColor" value="#1B6FA8"></label>
+      <label class="note">かぶせ色 <input type="color" id="tsColorOverlay" value="#E2447E"></label>
+      <label class="note">フチ色 <input type="color" id="tsStroke" value="#FFFFFF"></label>
+      <label class="note">フチの太さ <input type="range" id="tsStrokeWidth" min="0.04" max="0.28" step="0.01" value="0.14" style="width:90px;"><span class="note" id="tsStrokeWidthOut">0.14</span></label>
+      <label class="note"><input type="checkbox" id="tsGlow" style="width:auto;"> 発光</label>
+      <label class="note">発光色 <input type="color" id="tsGlowColor" value="#FFD64F"></label>
+      <label class="note">発光の強さ <input type="range" id="tsGlowBlur" min="0.1" max="0.9" step="0.05" value="0.35" style="width:90px;"><span class="note" id="tsGlowBlurOut">0.35</span></label>
     </div>
     <div id="easePanel" class="row" style="display:none; border:2px solid #FFD3E6; border-radius:12px; padding:10px; background:#FFFBFD; align-items:flex-start;">
       <canvas id="easeGraph" width="140" height="90" style="border-radius:8px; background:#fff; border:1px solid #E4F3FC; flex-shrink:0;"></canvas>
@@ -1528,6 +1538,7 @@ function gatherSettings(){
     charPace:$("charPace").value, lyricDeco:$("lyricDeco").value,
     fx:{always:$("fxAlways").value}, // 個別の背景・キャラ・エフェクトは行タイムライン(state.lines[].bg/ch/fx)側が正
     easeDefault:{...state.easeDefault}, easeApply:!!state.easeApply,
+    textStyle:{...state.textStyle},
     bgs:state.bgs.map(b=>({name:b.name})),
     chars:state.chars.map(c=>({name:c.name,keyMode:c.keyMode,keyStrength:c.keyStrength})),
   };
@@ -1549,6 +1560,8 @@ function applySettings(s){
   if(s.fx && s.fx.always!==undefined){ state.fx.always=s.fx.always; $("fxAlways").value=s.fx.always; }
   if(s.easeDefault) Object.assign(state.easeDefault,s.easeDefault); // v12のみ（無ければ既定値のまま）
   if(typeof s.easeApply==="boolean") state.easeApply=s.easeApply;
+  if(s.textStyle) Object.assign(state.textStyle,s.textStyle); // v12のみ（無ければ既定値のまま）
+  if(document.readyState!=="loading"&&$("tsColor")) initTextStylePanel();
   migrateLegacyToLines(s); // ★旧・素材タイムライン(secAssign)／さらに古い直接レンジ指定を行タイムラインへ変換
   if(Array.isArray(s.chars)) s.chars.forEach(sc=>{
     const c=state.chars.find(x=>x.name===sc.name);
@@ -1644,6 +1657,31 @@ function styleOf(l){ return (l.style&&l.style!=="default")?l.style:$("lyricStyle
 /* --- イージング指定（P0-1）：グローバル既定＋行ごとの上書き --- */
 state.easeDefault={family:"back",dir:"out",outPct:33,inPct:33,overshoot:1.7,amp:1,period:0.3,stiffness:170,damping:14,n:4,jump:"end",x1:0.42,y1:0,x2:0.58,y2:1};
 state.easeApply=false; // OFFなら各モーションは元の挙動そのまま。ONで動き出しの速さをイージング曲線に差し替える
+/* --- 文字の見た目（F2 P1-5：色・フチ・発光） --- */
+state.textStyle={color:"#1B6FA8",colorOverlay:"#E2447E",stroke:"#FFFFFF",strokeWidth:0.14,glow:false,glowColor:"#FFD64F",glowBlur:0.35};
+function initTextStylePanel(){
+  const ts=state.textStyle;
+  $("tsColor").value=ts.color; $("tsColorOverlay").value=ts.colorOverlay; $("tsStroke").value=ts.stroke;
+  $("tsStrokeWidth").value=ts.strokeWidth; $("tsStrokeWidthOut").textContent=ts.strokeWidth;
+  $("tsGlow").checked=ts.glow; $("tsGlowColor").value=ts.glowColor;
+  $("tsGlowBlur").value=ts.glowBlur; $("tsGlowBlurOut").textContent=ts.glowBlur;
+  $("tsColor").onchange=()=>{ ts.color=$("tsColor").value; drawFrame(effT()); };
+  $("tsColorOverlay").onchange=()=>{ ts.colorOverlay=$("tsColorOverlay").value; drawFrame(effT()); };
+  $("tsStroke").onchange=()=>{ ts.stroke=$("tsStroke").value; drawFrame(effT()); };
+  $("tsStrokeWidth").oninput=()=>{ ts.strokeWidth=parseFloat($("tsStrokeWidth").value); $("tsStrokeWidthOut").textContent=ts.strokeWidth; drawFrame(effT()); };
+  $("tsGlow").onchange=()=>{ ts.glow=$("tsGlow").checked; drawFrame(effT()); };
+  $("tsGlowColor").onchange=()=>{ ts.glowColor=$("tsGlowColor").value; drawFrame(effT()); };
+  $("tsGlowBlur").oninput=()=>{ ts.glowBlur=parseFloat($("tsGlowBlur").value); $("tsGlowBlurOut").textContent=ts.glowBlur; drawFrame(effT()); };
+}
+let textStylePanelPinned=false;
+function toggleTextStylePanel(){
+  textStylePanelPinned=!textStylePanelPinned;
+  $("textStylePanel").style.display=textStylePanelPinned?"flex":"none";
+  $("textStylePinBtn").textContent=textStylePanelPinned?"🎨 文字の見た目を隠す":"🎨 文字の見た目";
+  $("textStylePinBtn").classList.toggle("pink",textStylePanelPinned);
+}
+document.addEventListener("DOMContentLoaded",initTextStylePanel);
+if(document.readyState!=="loading") initTextStylePanel();
 function easeOf(l){ return (l&&l.ease)?{...state.easeDefault,...l.ease}:state.easeDefault; }
 function easeFnOf(l){
   const cfg=easeOf(l);
@@ -2131,9 +2169,12 @@ function drawSparks(dt){
 }
 
 /* --- 歌詞描画 --- */
-function strokeFillC(c,fs,color){
-  ctx.lineWidth=fs*.14; ctx.strokeStyle="rgba(255,255,255,.95)"; ctx.lineJoin="round";
+function strokeFillC(c,fs,color,thickMul){
+  const ts=state.textStyle;
+  if(ts.glow){ ctx.shadowColor=ts.glowColor; ctx.shadowBlur=fs*ts.glowBlur; }
+  ctx.lineWidth=fs*ts.strokeWidth*(thickMul||1); ctx.strokeStyle=ts.stroke; ctx.lineJoin="round";
   ctx.strokeText(c,0,0); ctx.fillStyle=color; ctx.fillText(c,0,0);
+  if(ts.glow) ctx.shadowBlur=0;
 }
 function drawLyric(t,lineIdx){
   if(lineIdx<0){ drawTitle(t); return; }
@@ -2163,7 +2204,7 @@ function drawLyric(t,lineIdx){
     : Math.min(0.20, Math.max(0.03, (tEnd-t0)*0.55/Math.max(1,n))); // 歌詞になるべく合わせる
   const POP=0.18;
   const overlay=style==="overlay"||(zone&&zone.overlay);
-  const color=overlay?"#E2447E":"#1B6FA8";
+  const color=overlay?state.textStyle.colorOverlay:state.textStyle.color;
 
   // デコ：文字が出た瞬間に線画シェイプがはじける（描画は文字の後ろ）
   const lineBased=(motion==="fuwa"||motion==="zoom"||motion==="slide");
@@ -2243,8 +2284,7 @@ function drawLyric(t,lineIdx){
       if(overlay) ctx.rotate(-0.05);
       ctx.scale(sc,sc);
       ctx.globalAlpha=alpha*fade;
-      if(overlay){ ctx.lineWidth=fs*.22; ctx.strokeStyle="rgba(255,255,255,1)"; ctx.lineJoin="round"; ctx.strokeText(P.c,0,0); ctx.fillStyle=color; ctx.fillText(P.c,0,0); }
-      else strokeFillC(P.c,fs,color);
+      strokeFillC(P.c,fs,color,overlay?1.57:1);
       ctx.restore();
     }
   }
@@ -2267,7 +2307,7 @@ function drawTitle(t){ // イントロ：【】クレジットがある時だけ
   ctx.save();
   ctx.globalAlpha=fadeIn;
   ctx.translate(CW/2,CH*0.36+Math.sin(t*1.1)*6*scale);
-  strokeFillC(title,fs,"#1B6FA8");
+  strokeFillC(title,fs,state.textStyle.color);
   ctx.restore();
   // クレジット（曲名以外）を下に並べる
   const rest=state.credits.filter(c=>c!==titleC);
