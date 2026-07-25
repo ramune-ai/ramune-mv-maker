@@ -1,0 +1,605 @@
+{
+  "format": "ramune-mv-project",
+  "version": 3,
+  "title": "AI Bubble",
+  "audioFile": "AI Bubble_mp3.mp3",
+  "exportedAt": "2026-07-25T10:32:41.499Z",
+  "credits": [
+    {
+      "label": "曲名",
+      "value": "AI Bubble"
+    },
+    {
+      "label": "作詞・作曲・編曲",
+      "value": "らむね あい"
+    },
+    {
+      "label": "歌",
+      "value": "AI Vocal-らむね あい"
+    },
+    {
+      "label": "編集",
+      "value": "らむね あい"
+    }
+  ],
+  "sectionText": "【曲名】AI Bubble\n【作詞・作曲・編曲】らむね あい\n【歌】AI Vocal-らむね あい\n【編集】らむね あい\n\n[Intro]\n\n[Instrumental]\n\n[Verse 1]\nずっと しまってた 小さな宝物\n見ないふりしてた　蓋をそっと開けて\n透きとおる　わたしの色　あぁ\nこのままで　いいんだ\n\n[Pre-Chorus]\n深呼吸したら　からだ軽くなって\nしゃぼん玉みたい　7色光って\n角度変えるたび　違う色が見える\nどれもぜんぶ　わたし\n\n[Chorus]\nAI Bubble ふわり\n青空どこまでも　Fly high⭐︎\n春の風に　身を任せれば\n寄り道だって　全部全部宝物♪\n\n[Verse 2]\n雨模様なら　屋根の下で\n壊れずに　待っていよう\n明日の雲に　おねがいして\n笑いながら　かけ出す準備\n\n[Pre-Chorus2]\n移り変わる　自分のカタチ\n誰かの正解には　当てはめない\nわたしのままで　一番つよい\n空を泳ぐように　今を漂う\n\n[Chorus2]\nAI Bubble きらり\n夢のまた夢へも　Fly away⭐︎\n虹、見れるかな？！　期待しちゃう\nその瞬間だって　全部全部宝石♪\n\n[Bridge / 落ちサビ]\nどこまでも行ける 光をまといながら\nわたしが わたしで 在るだけでいい\nドキドキも 全部 チカラになる\nAI Bubble…\n\n[Last Chorus (Key Change)]\nAI Bubble ふわり\n青空どこまでも　Fly high⭐︎\n春の風に　身を任せれば\n寄り道だって　全部全部宝物♪\n\nAI Bubble きらり\n夢のまた夢へも　Fly away⭐︎\n虹、見れるかな？！　期待しちゃう\nその瞬間だって　全部全部宝石♪\n\n[Outro]\nAI Bubble… きらり",
+  "lines": [
+    {
+      "text": "（前奏）",
+      "time": 0,
+      "motion": "default",
+      "gap": true
+    },
+    {
+      "text": "ずっと しまってた 小さな宝物",
+      "time": 10.007,
+      "motion": "slide",
+      "deco": "circle",
+      "style": "auto",
+      "section": "Verse 1",
+      "trans": "bubbles"
+    },
+    {
+      "text": "見ないふりしてた　蓋をそっと開けて",
+      "time": 15.301,
+      "motion": "slide",
+      "deco": "circle",
+      "style": "auto",
+      "section": "Verse 1"
+    },
+    {
+      "text": "透きとおる　わたしの色　あぁ",
+      "time": 20.777,
+      "motion": "slide",
+      "deco": "circle",
+      "style": "auto",
+      "section": "Verse 1"
+    },
+    {
+      "text": "このままで　いいんだ",
+      "time": 26.221,
+      "motion": "slide",
+      "deco": "circle",
+      "style": "auto",
+      "section": "Verse 1"
+    },
+    {
+      "text": "深呼吸したら　からだ軽くなって",
+      "time": 31.675,
+      "motion": "popin",
+      "deco": "triangle",
+      "style": "auto",
+      "section": "Pre-Chorus",
+      "trans": "diag"
+    },
+    {
+      "text": "しゃぼん玉みたい　7色光って",
+      "time": 34.607,
+      "motion": "popin",
+      "deco": "triangle",
+      "style": "auto",
+      "section": "Pre-Chorus"
+    },
+    {
+      "text": "角度変えるたび　違う色が見える",
+      "time": 37.211,
+      "motion": "popin",
+      "deco": "triangle",
+      "style": "auto",
+      "section": "Pre-Chorus"
+    },
+    {
+      "text": "どれもぜんぶ　わたし",
+      "time": 41.088,
+      "motion": "popin",
+      "deco": "triangle",
+      "style": "auto",
+      "section": "Pre-Chorus"
+    },
+    {
+      "text": "Ai Bubble ふわり",
+      "time": 43.038,
+      "motion": "bounce",
+      "deco": "heart",
+      "style": "bottom",
+      "section": "Chorus",
+      "trans": "rings"
+    },
+    {
+      "text": "青空どこまでも　Fly high⭐︎",
+      "time": 47.44,
+      "motion": "bounce",
+      "deco": "heart",
+      "style": "bottom",
+      "section": "Chorus"
+    },
+    {
+      "text": "春の風に　身を任せれば",
+      "time": 53.013,
+      "motion": "bounce",
+      "deco": "heart",
+      "style": "bottom",
+      "section": "Chorus"
+    },
+    {
+      "text": "寄り道だって　全部全部宝物♪",
+      "time": 56.235,
+      "motion": "bounce",
+      "deco": "heart",
+      "style": "bottom",
+      "section": "Chorus"
+    },
+    {
+      "text": "（間奏）",
+      "time": 62.235,
+      "motion": "default",
+      "gap": true
+    },
+    {
+      "text": "雨模様なら　屋根の下で",
+      "time": 72.378,
+      "motion": "slide",
+      "deco": "circle",
+      "style": "auto",
+      "section": "Verse 2",
+      "trans": "bubbleup"
+    },
+    {
+      "text": "壊れずに　待っていよう",
+      "time": 75.214,
+      "motion": "slide",
+      "deco": "circle",
+      "style": "auto",
+      "section": "Verse 2"
+    },
+    {
+      "text": "明日の雲に　おねがいして",
+      "time": 77.295,
+      "motion": "slide",
+      "deco": "circle",
+      "style": "auto",
+      "section": "Verse 2"
+    },
+    {
+      "text": "笑いながら　かけ出す準備",
+      "time": 80.332,
+      "motion": "slide",
+      "deco": "circle",
+      "style": "auto",
+      "section": "Verse 2"
+    },
+    {
+      "text": "移り変わる　自分のカタチ",
+      "time": 83.618,
+      "motion": "popin",
+      "deco": "triangle",
+      "style": "auto",
+      "section": "Pre-Chorus2",
+      "trans": "diag"
+    },
+    {
+      "text": "誰かの正解には　当てはめない",
+      "time": 86.22,
+      "motion": "popin",
+      "deco": "triangle",
+      "style": "auto",
+      "section": "Pre-Chorus2"
+    },
+    {
+      "text": "わたしのままで　一番つよい",
+      "time": 88.95,
+      "motion": "popin",
+      "deco": "triangle",
+      "style": "auto",
+      "section": "Pre-Chorus2"
+    },
+    {
+      "text": "空を泳ぐように　今を漂う",
+      "time": 91.433,
+      "motion": "popin",
+      "deco": "triangle",
+      "style": "auto",
+      "section": "Pre-Chorus2"
+    },
+    {
+      "text": "Ai Bubble きらり",
+      "time": 94.35,
+      "motion": "bounce",
+      "deco": "heart",
+      "style": "bottom",
+      "section": "Chorus2",
+      "trans": "checker"
+    },
+    {
+      "text": "夢のまた夢へも　Fly away⭐︎",
+      "time": 98.723,
+      "motion": "bounce",
+      "deco": "heart",
+      "style": "bottom",
+      "section": "Chorus2"
+    },
+    {
+      "text": "虹、見れるかな？！　期待しちゃう",
+      "time": 104.281,
+      "motion": "bounce",
+      "deco": "heart",
+      "style": "bottom",
+      "section": "Chorus2"
+    },
+    {
+      "text": "その瞬間だって　全部全部宝石♪",
+      "time": 107.46,
+      "motion": "bounce",
+      "deco": "heart",
+      "style": "bottom",
+      "section": "Chorus2"
+    },
+    {
+      "text": "（間奏）",
+      "time": 113.46,
+      "motion": "default",
+      "gap": true
+    },
+    {
+      "text": "どこまでも行ける 光をまといながら",
+      "time": 124.373,
+      "motion": "bounce",
+      "deco": "heart",
+      "style": "bottom",
+      "section": "Bridge / 落ちサビ",
+      "trans": "diamonds"
+    },
+    {
+      "text": "わたしが わたしで 在るだけでいい",
+      "time": 129.428,
+      "motion": "bounce",
+      "deco": "heart",
+      "style": "bottom",
+      "section": "Bridge / 落ちサビ"
+    },
+    {
+      "text": "ドキドキも 全部 チカラになる",
+      "time": 135.023,
+      "motion": "bounce",
+      "deco": "heart",
+      "style": "bottom",
+      "section": "Bridge / 落ちサビ"
+    },
+    {
+      "text": "（間奏）",
+      "time": 141.023,
+      "motion": "default",
+      "gap": true
+    },
+    {
+      "text": "Ai Bubble…",
+      "time": 147.188,
+      "motion": "bounce",
+      "deco": "heart",
+      "style": "bottom",
+      "section": "Bridge / 落ちサビ"
+    },
+    {
+      "text": "Ai Bubble ふわり",
+      "time": 148.276,
+      "motion": "bounce",
+      "deco": "heart",
+      "style": "bottom",
+      "section": "Last Chorus (Key Change)",
+      "trans": "diag"
+    },
+    {
+      "text": "青空どこまでも　Fly high⭐︎",
+      "time": 152.611,
+      "motion": "bounce",
+      "deco": "heart",
+      "style": "bottom",
+      "section": "Last Chorus (Key Change)"
+    },
+    {
+      "text": "春の風に　身を任せれば",
+      "time": 158.35,
+      "motion": "bounce",
+      "deco": "heart",
+      "style": "bottom",
+      "section": "Last Chorus (Key Change)"
+    },
+    {
+      "text": "寄り道だって　全部全部宝物♪",
+      "time": 161.364,
+      "motion": "bounce",
+      "deco": "heart",
+      "style": "bottom",
+      "section": "Last Chorus (Key Change)"
+    },
+    {
+      "text": "Ai Bubble きらり",
+      "time": 167.085,
+      "motion": "bounce",
+      "deco": "heart",
+      "style": "bottom",
+      "section": "Last Chorus (Key Change)"
+    },
+    {
+      "text": "夢のまた夢へも　Fly away⭐︎",
+      "time": 171.487,
+      "motion": "bounce",
+      "deco": "heart",
+      "style": "bottom",
+      "section": "Last Chorus (Key Change)"
+    },
+    {
+      "text": "虹、見れるかな？！　期待しちゃう",
+      "time": 177.135,
+      "motion": "bounce",
+      "deco": "heart",
+      "style": "bottom",
+      "section": "Last Chorus (Key Change)"
+    },
+    {
+      "text": "その瞬間だって　全部全部宝石♪",
+      "time": 180.269,
+      "motion": "bounce",
+      "deco": "heart",
+      "style": "bottom",
+      "section": "Last Chorus (Key Change)"
+    },
+    {
+      "text": "（間奏）",
+      "time": 186.269,
+      "motion": "default",
+      "gap": true
+    },
+    {
+      "text": "Ai Bubble… きらり",
+      "time": 190.71,
+      "motion": "bounce",
+      "deco": "random",
+      "style": "bottom",
+      "section": "Outro",
+      "trans": "rings"
+    },
+    {
+      "text": "（後奏）",
+      "time": 196.71,
+      "motion": "default",
+      "gap": true
+    }
+  ],
+  "settings": {
+    "bpm": 177,
+    "beatOffset": 0.08,
+    "lyricOffset": 0.35,
+    "maxHold": 6,
+    "lyricStyle": "auto",
+    "defaultMotion": "popin",
+    "fontSelect": "\"RF_bokutachi\"",
+    "charPace": "phrase",
+    "lyricDeco": "random",
+    "bgTransition": "cut",
+    "fx": {
+      "bubbles": "all",
+      "sparkle": "10-13, 23-26, 28-30, 32-40, 42",
+      "pop": "2, 15, 28, 32, 42",
+      "flare": "",
+      "sakura": "",
+      "always": ""
+    },
+    "easeDefault": {
+      "family": "back",
+      "dir": "out",
+      "outPct": 33,
+      "inPct": 33,
+      "overshoot": 1.7,
+      "amp": 1,
+      "period": 0.3,
+      "stiffness": 170,
+      "damping": 14,
+      "n": 4,
+      "jump": "end",
+      "x1": 0.42,
+      "y1": 0,
+      "x2": 0.58,
+      "y2": 1
+    },
+    "secAssign": {
+      "0": {
+        "bg": "オレンジAIBubble.png",
+        "ch": "none",
+        "fx": "bubbles",
+        "pos": "right",
+        "size": "1",
+        "cmo": "sway"
+      },
+      "1": {
+        "bg": "ピンクAIBubble.png",
+        "ch": "らむねむー.png",
+        "fx": "",
+        "pos": "right",
+        "size": "1",
+        "cmo": "sway"
+      },
+      "2": {
+        "bg": "緑AIBubble.png",
+        "ch": "らむねドヤ.png",
+        "fx": "",
+        "pos": "left",
+        "size": "1",
+        "cmo": "sway"
+      },
+      "3": {
+        "bg": "青AIBubble.png",
+        "ch": "らむね目開き笑顔.jpeg",
+        "fx": "sparkle",
+        "pos": "center",
+        "size": "1.4",
+        "cmo": "bounce"
+      },
+      "4": {
+        "bg": "黄AIBubble.png",
+        "ch": "none",
+        "fx": "bubbles",
+        "pos": "right",
+        "size": "1",
+        "cmo": "sway"
+      },
+      "5": {
+        "bg": "オレンジAIBubble.png",
+        "ch": "らむねニッコリ.png",
+        "fx": "",
+        "pos": "right",
+        "size": "1",
+        "cmo": "sway"
+      },
+      "6": {
+        "bg": "ピンクAIBubble.png",
+        "ch": "らむねポカン.png",
+        "fx": "",
+        "pos": "left",
+        "size": "1",
+        "cmo": "sway"
+      },
+      "7": {
+        "bg": "緑AIBubble.png",
+        "ch": "らむねむー.png",
+        "fx": "sparkle",
+        "pos": "center",
+        "size": "1.4",
+        "cmo": "bounce"
+      },
+      "8": {
+        "bg": "青AIBubble.png",
+        "ch": "none",
+        "fx": "bubbles",
+        "pos": "right",
+        "size": "1",
+        "cmo": "sway"
+      },
+      "9": {
+        "bg": "黄AIBubble.png",
+        "ch": "らむねドヤ.png",
+        "fx": "sparkle",
+        "pos": "right",
+        "size": "1.4",
+        "cmo": "bounce"
+      },
+      "10": {
+        "bg": "オレンジAIBubble.png",
+        "ch": "none",
+        "fx": "bubbles",
+        "pos": "right",
+        "size": "1",
+        "cmo": "sway"
+      },
+      "11": {
+        "bg": "ピンクAIBubble.png",
+        "ch": "らむね目開き笑顔.jpeg",
+        "fx": "sparkle",
+        "pos": "left",
+        "size": "1.4",
+        "cmo": "bounce"
+      },
+      "12": {
+        "bg": "緑AIBubble.png",
+        "ch": "らむねニッコリ.png",
+        "fx": "sparkle",
+        "pos": "center",
+        "size": "1.4",
+        "cmo": "bounce"
+      },
+      "13": {
+        "bg": "青AIBubble.png",
+        "ch": "none",
+        "fx": "bubbles",
+        "pos": "right",
+        "size": "1",
+        "cmo": "sway"
+      },
+      "14": {
+        "bg": "黄AIBubble.png",
+        "ch": "らむねポカン.png",
+        "fx": "",
+        "pos": "right",
+        "size": "1",
+        "cmo": "sway"
+      },
+      "15": {
+        "bg": "オレンジAIBubble.png",
+        "ch": "none",
+        "fx": "bubbles",
+        "pos": "right",
+        "size": "1",
+        "cmo": "sway"
+      }
+    },
+    "bgs": [
+      {
+        "name": "オレンジAIBubble.png",
+        "ranges": "1-1, 15-18, 31-31, 43-43"
+      },
+      {
+        "name": "ピンクAIBubble.png",
+        "ranges": "2-5, 19-22, 32-32"
+      },
+      {
+        "name": "緑AIBubble.png",
+        "ranges": "6-9, 23-26, 33-40"
+      },
+      {
+        "name": "青AIBubble.png",
+        "ranges": "10-13, 27-27, 41-41"
+      },
+      {
+        "name": "黄AIBubble.png",
+        "ranges": "14-14, 28-30, 42-42"
+      }
+    ],
+    "chars": [
+      {
+        "name": "らむねむー.png",
+        "ranges": "",
+        "pos": "center",
+        "size": 1.4,
+        "keyMode": "green",
+        "keyStrength": 1,
+        "cmotion": "sway"
+      },
+      {
+        "name": "らむねドヤ.png",
+        "ranges": "",
+        "pos": "left",
+        "size": 1.4,
+        "keyMode": "green",
+        "keyStrength": 1,
+        "cmotion": "still"
+      },
+      {
+        "name": "らむね目開き笑顔.jpeg",
+        "ranges": "",
+        "pos": "center",
+        "size": 1.4,
+        "keyMode": "green",
+        "keyStrength": 1,
+        "cmotion": "bounce"
+      },
+      {
+        "name": "らむねニッコリ.png",
+        "ranges": "",
+        "pos": "left",
+        "size": 1.4,
+        "keyMode": "green",
+        "keyStrength": 1,
+        "cmotion": "bounce"
+      },
+      {
+        "name": "らむねポカン.png",
+        "ranges": "",
+        "pos": "right",
+        "size": 1.4,
+        "keyMode": "green",
+        "keyStrength": 1,
+        "cmotion": "sway"
+      }
+    ]
+  }
+}
