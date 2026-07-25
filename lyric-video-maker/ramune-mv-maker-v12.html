@@ -47,7 +47,7 @@
   .card{border:2px solid #E4F3FC; border-radius:12px; padding:8px 12px; margin:6px 0;
     display:flex; flex-wrap:wrap; gap:8px; align-items:center;}
   .card .del{border:none; background:#FDE8EF; color:#D14; border-radius:8px; cursor:pointer; padding:2px 10px; font:inherit;}
-  #lineList{margin-top:10px; max-height:380px; overflow-y:auto; border:2px solid #E4F3FC; border-radius:12px;}
+  #lineList{margin-top:10px; max-height:min(82vh,1400px); overflow-y:auto; border:2px solid #E4F3FC; border-radius:12px;}
   .lrow{display:flex; align-items:center; gap:8px; padding:5px 10px; border-bottom:1px solid #EFF8FE; font-size:.85rem;}
   .lrow:nth-child(odd){background:#FBFEFF;}
   .lrow .no{width:30px; color:#9FBCCB; flex-shrink:0; text-align:right;}
@@ -273,10 +273,6 @@
       </div>
     </div>
     <div class="row">
-      <button class="btn ghost" onclick="addGapLines()">🎼 前奏・間奏・後奏に行番号を振る</button>
-      <span class="note">10秒以上の歌なし区間に「（間奏）」行を追加。ここも背景・キャラ・エフェクトのまとめ役になります</span>
-    </div>
-    <div class="row">
       <label>✨ 常時エフェクト
         <select id="fxAlways">
           <option value="">なし</option><option value="bubbles">🫧 しゃぼん玉</option>
@@ -452,8 +448,9 @@ function loadTiming(d){
   if(Array.isArray(d.credits)) state.credits=d.credits;
   state.savedSettings=d.settings||null;
   if(d.settings) applySettings(d.settings);
-  renderLineList();
   if($("sectionText").value.trim()) importSections();
+  addGapLines(); // 前奏・間奏・後奏の行番号を自動で振る（手動ボタンは廃止）
+  renderLineList();
   $("jsonName").textContent=(d.settings?"✅ 歌詞＋演出設定を復元（画像/曲/フォントは同じファイルを選び直せば自動紐付け）":"✅ 歌詞タイミングを読込");
 }
 /* 素材を後から読み込んでも、保存済みのクロマキー設定（keyMode/keyStrength）を名前で自動紐付け
@@ -960,10 +957,9 @@ function drawEaseGraph(){
 document.addEventListener("DOMContentLoaded",initEasePanel);
 if(document.readyState!=="loading") initEasePanel();
 
-function addGapLines(){
-  if(state.lines.length===0){ alert("先にJSONを読み込んでね"); return; }
-  pushUndo();
-  const GAP=10, HOLD=(+$("maxHold").value||6);
+function addGapLines(){ // ①JSON読込・②タップ完了・セクション読取・音声メタ確定のたびに自動実行（手動ボタンは廃止）
+  if(state.lines.length===0) return;
+  const GAP=7, HOLD=(+$("maxHold").value||6);
   const out=[];
   const first=state.lines[0];
   if(!first.gap && first.time>8) out.push({text:"（前奏）",time:0,motion:"default",gap:true});
@@ -1053,6 +1049,7 @@ function importSections(){
     const m=seq.find(x=>x.text===normS(line.text));
     if(m){ line.section=m.sec; hit++; }
   }
+  addGapLines(); // 前奏・間奏・後奏の行番号を自動で振る
   renderLineList();
   renderSectionSummary();
   const total=state.lines.filter(l=>!l.gap).length;
@@ -1372,6 +1369,7 @@ function togglePlaySmall(){
   if(audio.paused){ audio.play(); } else audio.pause();
 }
 function seekRelSmall(d){ if(audio.src) audio.currentTime=Math.max(0,audio.currentTime+d); }
+audio.addEventListener("loadedmetadata",()=>{ if(state.lines.length){ addGapLines(); renderLineList(); } }); // 曲の長さが分かった時点で後奏の自動判定をやり直す
 audio.addEventListener("play",()=>{ $("bpmPlayBtn").textContent="⏸ 一時停止"; });
 audio.addEventListener("pause",()=>{ $("bpmPlayBtn").textContent="▶ 曲を再生"; });
 setInterval(()=>{
@@ -1427,7 +1425,6 @@ function parseRanges(s){
   _rangeCache.set(s,out);
   return out;
 }
-function inRanges(r,n){ return r==="all" || (Array.isArray(r)&&r.some(([a,b])=>n>=a&&n<=b)); }
 
 /* ================= プロジェクト保存/復元 ================= */
 function gatherSettings(){
