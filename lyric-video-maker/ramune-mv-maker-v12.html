@@ -1724,9 +1724,20 @@ function pickBg(lineIdx){
   if(!name && state.bgs.length) return state.bgs[0]; // 何も設定していなければ最初の1枚を自動採用（初心者向けの挙動）
   return null;
 }
-function drawBgImage(bg,t){
+const PUNCH_EASE=Easing.get("circ","out");
+function chorusPunchZoom(t,lineIdx){ // F2 P2-2：サビの拍アタックで軽いパンチズーム
+  const l=lineIdx>=0?state.lines[lineIdx]:null;
+  if(!l||l.gap) return 0;
+  const sec=(l.section||"").toLowerCase();
+  if(!/chorus|サビ/.test(sec)) return 0;
+  const DECAY=0.3;
+  const bp=beatPhase(t);
+  const p=Math.max(0,1-bp/DECAY);
+  return PUNCH_EASE(p)*0.05;
+}
+function drawBgImage(bg,t,lineIdx){
   if(bg){
-    const zoom=1.03+0.02*Math.sin(t*0.08);
+    const zoom=1.03+0.02*Math.sin(t*0.08)+(lineIdx!==undefined?chorusPunchZoom(t,lineIdx):0);
     const img=bg.img, s=Math.max(CW/img.width,CH/img.height)*zoom;
     ctx.drawImage(img,(CW-img.width*s)/2,(CH-img.height*s)/2,img.width*s,img.height*s);
   }else{
@@ -1745,11 +1756,11 @@ function drawBackground(t,lineIdx){
   const type="cut"; // 背景切替は常にカット（見せ場はセクション切替演出が担当）／以下の他ブランチはP2-3で有効化予定（現状はここで固定のため未到達＝意図的）
   const findBg=k=>k==="__grad__"?null:state.bgs.find(b=>b.name===k)||null;
 
-  if(p>=1||type==="cut"||prevBgKey===null){ drawBgImage(bg,t); }
+  if(p>=1||type==="cut"||prevBgKey===null){ drawBgImage(bg,t,lineIdx); }
   else{
     drawBgImage(findBg(prevBgKey),t);
     if(type==="white"){
-      drawBgImage(bg,t);
+      drawBgImage(bg,t,lineIdx);
       const a=p<0.5?p*2:(1-p)*2;
       ctx.fillStyle=`rgba(255,255,255,${p<0.5?p*2:1})`;
       if(p>=0.5){ ctx.fillStyle=`rgba(255,255,255,${(1-p)*2})`; }
@@ -1759,7 +1770,7 @@ function drawBackground(t,lineIdx){
       ctx.beginPath();
       ctx.arc(CW/2,CH/2, Math.hypot(CW,CH)*0.6*p, 0,6.29);
       ctx.clip();
-      drawBgImage(bg,t);
+      drawBgImage(bg,t,lineIdx);
       ctx.restore();
     }else if(type==="rings"){ // 多重丸：リングが波状に広がって切り替え
       const R=Math.hypot(CW,CH)*0.6;
@@ -1773,7 +1784,7 @@ function drawBackground(t,lineIdx){
         ctx.moveTo(CW/2+r,CH/2); ctx.arc(CW/2,CH/2,r,0,6.29);
       }
       ctx.clip("evenodd");
-      drawBgImage(bg,t);
+      drawBgImage(bg,t,lineIdx);
       ctx.restore();
       // 白いリングのフラッシュ
       for(let i=0;i<bands;i++){
@@ -1797,7 +1808,7 @@ function drawBackground(t,lineIdx){
         ctx.rect(x,i*bh,w,bh+1);
       }
       ctx.clip();
-      drawBgImage(bg,t);
+      drawBgImage(bg,t,lineIdx);
       ctx.restore();
     }else if(type==="diamonds"){ // 多重ダイヤ：格子状のダイヤが膨らんで切り替え
       const cols=6, rows=4;
@@ -1813,10 +1824,10 @@ function drawBackground(t,lineIdx){
         ctx.moveTo(x,y-r); ctx.lineTo(x+r,y); ctx.lineTo(x,y+r); ctx.lineTo(x-r,y); ctx.closePath();
       }
       ctx.clip();
-      drawBgImage(bg,t);
+      drawBgImage(bg,t,lineIdx);
       ctx.restore();
     }else if(type==="cloud"){ // 雲ポフっ：もこもこ雲が画面を覆って晴れると新背景
-      if(p>=0.5) drawBgImage(bg,t);
+      if(p>=0.5) drawBgImage(bg,t,lineIdx);
       const cover=p<0.5?p*2:1-(p-0.5)*2; // 0→1→0
       const N=12;
       for(let i=0;i<N;i++){
@@ -1843,7 +1854,7 @@ function drawBackground(t,lineIdx){
         ctx.moveTo(bx+r,by); ctx.arc(bx,by,r,0,6.29);
       }
       ctx.clip();
-      drawBgImage(bg,t);
+      drawBgImage(bg,t,lineIdx);
       ctx.restore();
     }
   }
