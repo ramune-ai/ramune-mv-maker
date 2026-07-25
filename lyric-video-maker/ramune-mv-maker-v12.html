@@ -192,7 +192,7 @@
           <button class="btn ghost" onclick="redo()" title="Ctrl+Shift+Z">↪ やり直す</button>
         </div>
         <span class="note">🔍 仮合成プレビュー：再生・バー・下の歌詞行クリックで完成形を確認（背景・キャラ・字幕・デコ全部入り）</span><br>
-        <span class="note">⌨ ショートカット：<b>Space</b> 再生/一時停止・<b>←→</b> 5秒送り（<b>Shift+←→</b>で1秒）・<b>Home</b> 曲頭へ・<b>Ctrl+Z / Ctrl+Shift+Z</b> 元に戻す/やり直す</span>
+        <span class="note">⌨ ショートカット：<b>Space</b> 再生/一時停止・<b>←→</b> 5秒送り（<b>Shift+←→</b>で1秒）・<b>0</b> 曲頭へ・<b>Ctrl+Z / Ctrl+Shift+Z</b> 元に戻す/やり直す</span>
       </div>
     </div>
 
@@ -323,7 +323,7 @@
       <button class="btn ghost" onclick="pvSeekRel(5)">+5s ⏩</button>
       <span class="timecode" id="pvTimecode">0:00.00</span>
     </div>
-    <p class="note">⌨ ショートカット：<b>Space</b> 再生/一時停止・<b>←→</b> 5秒送り（<b>Shift+←→</b>で1秒）・<b>Home</b> 曲頭へ</p>
+    <p class="note">⌨ ショートカット：<b>Space</b> 再生/一時停止・<b>←→</b> 5秒送り（<b>Shift+←→</b>で1秒）・<b>0</b> 曲頭へ</p>
     <h2 style="margin-top:20px;">🎬 動画書き出し（WebM）</h2>
     <div class="row">
       <label>画質
@@ -836,24 +836,32 @@ function renderLineList(){
   const box=$("lineList"); box.innerHTML="";
   const zones=secZones(); let zi=0;
   let prevSec=null;
+  const mkExHead=(label,cls)=>{ const h=document.createElement("div"); h.className="exhead "+cls; h.textContent=label; return h; };
+  const mkExRow=(label,el)=>{ const r=document.createElement("div"); r.className="exrow"; const lb=document.createElement("span"); lb.className="exlabel"; lb.textContent=label; r.append(lb,el); return r; };
+  const mkPlainSel=(opts,value)=>{ const sel=document.createElement("select"); for(const [v,lab] of opts){ const o=document.createElement("option"); o.value=v; o.textContent=lab; sel.appendChild(o); } sel.value=value; sel.onclick=e=>e.stopPropagation(); return sel; };
   state.lines.forEach((l,i)=>{
     const isZoneHead=l.gap||(l.section&&l.section!==prevSec);
     if(isZoneHead){
       const z=zones[zi]; zi++;
-      const hd=document.createElement("div"); hd.className="lrow";
-      hd.style.cssText="background:"+(l.gap?"#FBF7EC":"#DFF2FE")+";font-weight:800;color:"+(l.gap?"#A08C5B":"var(--soda-deep)")+";gap:8px;flex-wrap:wrap;align-items:center;";
+      const hd=document.createElement("details"); hd.className="lrow-acc zone-acc";
+      const sum=document.createElement("summary"); sum.className="lrow";
+      sum.style.cssText="background:"+(l.gap?"#FBF7EC":"#DFF2FE")+";font-weight:800;color:"+(l.gap?"#A08C5B":"var(--soda-deep)")+";";
       if(z){
         const pv2=document.createElement("canvas"); pv2.width=96; pv2.height=54;
         pv2.style.cssText="border-radius:6px;background:#000;flex-shrink:0;cursor:pointer;";
         pv2.title="クリックで上のミニプレビューに表示";
-        pv2.onclick=e=>{ e.stopPropagation(); renderMini(lineTime(l)+(l.gap?1:1.2)); };
-        hd.appendChild(pv2);
+        pv2.onclick=e=>{ e.stopPropagation(); jumpMini(lineTime(l)+(l.gap?1:1.2)); };
+        sum.appendChild(pv2);
         renderRowPreview(pv2,z);
       }
       const nm=document.createElement("span");
       nm.textContent=l.gap?"["+l.text.replace(/[（）()]/g,"")+"]":"［"+l.section+"］";
       nm.style.cssText="min-width:100px;";
-      hd.appendChild(nm);
+      sum.appendChild(nm);
+      const zt=document.createElement("span"); zt.className="t"; zt.textContent=fmt(lineTime(l));
+      zt.title="クリックで仮合成プレビューへ";
+      zt.onclick=e=>{ e.preventDefault(); e.stopPropagation(); jumpMini(lineTime(l)); };
+      sum.appendChild(zt);
       {
         const lab=document.createElement("span"); lab.className="note"; lab.textContent="切替演出:";
         const sel=document.createElement("select");
@@ -861,33 +869,61 @@ function renderLineList(){
         sel.value=l.trans||"none";
         sel.onchange=()=>{ pushUndo(); l.trans=sel.value; };
         sel.onclick=e=>e.stopPropagation();
-        hd.append(lab,sel);
+        sum.append(lab,sel);
       }
-      const mkLbl=(text,el)=>{ const w=document.createElement("label"); w.className="note"; w.style.cssText="display:flex;align-items:center;gap:3px;"; w.append(text,el); return w; };
+      hd.appendChild(sum);
+
+      const panel=document.createElement("div"); panel.className="exgrid";
       if(l.gap){
-        // 間奏などは歌詞本文を持たず、素材を設定できる場所がここしかないためフル項目
-        hd.append(
-          mkLbl("背景",mkFieldSel(l,bgFieldOpts(),"bg",{fullRerender:true})),
-          mkLbl("キャラ",mkFieldSel(l,chFieldOpts(),"ch",{fullRerender:true})),
-          mkLbl("位置",mkFieldSel(l,POS_OPTS,"chPos",{emptyValue:"right"})),
-          mkLbl("大きさ",mkFieldSel(l,SIZE_OPTS,"chSize",{emptyValue:"1"})),
-          mkLbl("動き",mkFieldSel(l,CMO_OPTS,"chMotion",{emptyValue:"sway"})),
-          mkLbl("FX",mkFieldSel(l,FX_OPTS,"fx"))
+        // 間奏などは歌詞本文を持たず、素材を設定できる場所がここしかないので直接編集
+        const col=document.createElement("div"); col.className="excol"; col.style.gridColumn="1/-1";
+        col.append(
+          mkExHead("素材","c-pink"),
+          mkExRow("背景",mkFieldSel(l,bgFieldOpts(),"bg",{fullRerender:true})),
+          mkExRow("キャラ",mkFieldSel(l,chFieldOpts(),"ch",{fullRerender:true})),
+          mkExRow("位置",mkFieldSel(l,POS_OPTS,"chPos",{emptyValue:"right"})),
+          mkExRow("大きさ",mkFieldSel(l,SIZE_OPTS,"chSize",{emptyValue:"1"})),
+          mkExRow("動き",mkFieldSel(l,CMO_OPTS,"chMotion",{emptyValue:"sway"})),
+          mkExRow("エフェクト",mkFieldSel(l,FX_OPTS,"fx"))
         );
+        panel.appendChild(col);
       }else{
-        // セクション見出しは直下の最初の歌詞行と同じデータを指すため、切替演出だけに絞る
-        // （背景・キャラ・FXは直下の行を開けばセクション全体に設定できる → ボタンで直接開く）
-        const hintBtn=document.createElement("button"); hintBtn.className="btn ghost"; hintBtn.type="button";
-        hintBtn.style.cssText="font-size:.75rem; padding:4px 10px;";
-        hintBtn.textContent="↓ 直下の行を開いて背景・キャラ・FXを設定";
-        hintBtn.onclick=e=>{
+        // セクション一括設定：ここで選んで「適用」すると、このセクションの全行に同じ値を上書きする
+        // （行ごとの個別編集とは別物。既に個別編集された行がある場合は上書き前に確認する）
+        const note=document.createElement("p"); note.className="note"; note.style.cssText="grid-column:1/-1; margin:0 0 6px;";
+        note.textContent="この["+l.section+"]セクション（"+z.a+"〜"+z.z+"行目）の全ての行に、下で選んだ内容をまとめて適用します。";
+        panel.appendChild(note);
+        const motionSel=mkPlainSel(Object.entries(MOTIONS),l.motion||"default");
+        const decoSel=mkPlainSel(Object.entries(DECO_SEL),l.deco||"default");
+        const styleSel=mkPlainSel(Object.entries(STYLE_SEL),l.style||"default");
+        const bgSel=mkPlainSel(bgFieldOpts(),l.bg||"");
+        const chSel=mkPlainSel(chFieldOpts(),l.ch||"");
+        const posSel=mkPlainSel(POS_OPTS,l.chPos||"right");
+        const sizeSel=mkPlainSel(SIZE_OPTS,l.chSize||"1");
+        const cmoSel=mkPlainSel(CMO_OPTS,l.chMotion||"sway");
+        const fxSel=mkPlainSel(FX_OPTS,l.fx||"");
+        const col1=document.createElement("div"); col1.className="excol";
+        col1.append(mkExHead("文字演出","c-blue"),mkExRow("モーション",motionSel),mkExRow("デコ",decoSel),mkExRow("配置",styleSel));
+        const col2=document.createElement("div"); col2.className="excol";
+        col2.append(mkExHead("素材","c-pink"),mkExRow("背景",bgSel),mkExRow("キャラ",chSel),mkExRow("位置",posSel),mkExRow("大きさ",sizeSel),mkExRow("動き",cmoSel),mkExRow("エフェクト",fxSel));
+        const applyBtn=document.createElement("button"); applyBtn.className="btn pink"; applyBtn.type="button";
+        applyBtn.style.cssText="grid-column:1/-1; margin-top:4px;";
+        applyBtn.textContent="⚠ このセクション全体に適用（"+(z.z-z.a+1)+"行を上書き）";
+        applyBtn.onclick=e=>{
           e.stopPropagation();
-          const next=hd.nextElementSibling;
-          if(next && next.tagName==="DETAILS"){ next.open=true; next.scrollIntoView({block:"center",behavior:"smooth"}); }
+          const targetLines=state.lines.slice(z.idx,z.z);
+          const hasCustom=targetLines.some(tl=>tl!==l&&(
+            (tl.motion&&tl.motion!=="default")||(tl.deco&&tl.deco!=="default")||(tl.style&&tl.style!=="default")||
+            tl.bg||tl.ch||tl.chPos||tl.chSize||tl.chMotion||tl.fx));
+          if(hasCustom&&!confirm("このセクション内には行ごとに個別編集された行があります。「適用」すると、その内容も含めて全ての行が上書きされます。よろしいですか？")) return;
+          pushUndo();
+          const vals={motion:motionSel.value,deco:decoSel.value,style:styleSel.value,bg:bgSel.value,ch:chSel.value,chPos:posSel.value,chSize:sizeSel.value,chMotion:cmoSel.value,fx:fxSel.value};
+          targetLines.forEach(tl=>Object.assign(tl,vals));
+          renderLineList();
         };
-        hd.appendChild(hintBtn);
+        panel.append(col1,col2,applyBtn);
       }
-      hd.onclick=()=>{ if(typeof renderMini==="function") renderMini(Math.max(0,lineTime(l)-0.5)); };
+      hd.appendChild(panel);
       box.appendChild(hd);
       if(!l.gap) prevSec=l.section;
     }
@@ -901,11 +937,9 @@ function renderLineList(){
     const txt=document.createElement("span"); txt.className="txt"; txt.textContent=l.text;
     sum.append(no,t,txt);
     t.title="クリックで仮合成プレビューへ";
-    t.onclick=e=>{ e.preventDefault(); e.stopPropagation(); if(typeof renderMini==="function") renderMini(lineTime(l)); };
+    t.onclick=e=>{ e.preventDefault(); e.stopPropagation(); jumpMini(lineTime(l)); };
     row.appendChild(sum);
 
-    const mkExHead=(label,cls)=>{ const h=document.createElement("div"); h.className="exhead "+cls; h.textContent=label; return h; };
-    const mkExRow=(label,el)=>{ const r=document.createElement("div"); r.className="exrow"; const lb=document.createElement("span"); lb.className="exlabel"; lb.textContent=label; r.append(lb,el); return r; };
     const grid=document.createElement("div"); grid.className="exgrid";
     const col1=document.createElement("div"); col1.className="excol";
     col1.append(
@@ -1452,10 +1486,9 @@ document.addEventListener("keydown",e=>{
     e.preventDefault();
     const d=e.shiftKey?1:5;
     if(previewing) pvSeekRel(d); else miniSeekRel(d);
-  }else if(e.code==="Home"){
+  }else if(e.code==="Home"||e.code==="Digit0"||e.code==="Numpad0"){
     e.preventDefault();
-    if(previewing) pvSeek(0);
-    else if(audio.src){ audio.currentTime=0; if(!mini.playing) renderMini(0); }
+    if(previewing) pvSeek(0); else jumpMini(0);
   }
 });
 setInterval(()=>{ if(tap.active) $("tapTime").textContent=fmt(audio.currentTime); },80);
@@ -2354,6 +2387,13 @@ function renderMini(tSel){
   miniCtx.drawImage(cv,0,0,miniCv.width,miniCv.height); // …縮小コピー
   $("miniTime").textContent=fmt(tSel);
   $("miniSeek").value=tSel;
+}
+/* タイムライン上の「この時刻へジャンプ」共通処理。再生中はaudio.currentTimeを進めるだけにして、
+   次のrAFフレームで再生中の描画ループに正しく反映させる（再生中にクリックしても飛ばない不具合の対策） */
+function jumpMini(t){
+  t=Math.max(0,t);
+  if(audio.src) audio.currentTime=t;
+  if(!mini.playing) renderMini(t);
 }
 $("miniSeek").addEventListener("input",()=>{
   if(mini.playing) miniStop();
