@@ -1065,30 +1065,22 @@ function addGapLines(){ // ①JSON読込・②タップ完了・セクション�
   renderLineList();
 }
 
-function recommendMotions(){
+function recommendMotions(){ // MV文法（PLAN.md 11章）：熱量からモーション/デコ/配置を導出
   pushUndo();
+  const zs=secZones();
+  const energies=computeZoneEnergies(zs);
   const L=state.lines;
-  L.forEach((l,i)=>{
-    if(l.gap) return;
-    const next=L[i+1];
-    const dur=(next?next.time:l.time+5)-l.time;
-    const afterGap=(i===0)||L[i-1].gap;
-    const beforeGap=next&&next.gap;
-    const sec=(l.section||"").toLowerCase();
-    if(/pre.?chorus|ビート前/.test(sec)) l.motion="popin";            // Bメロは畳みかけ
-    else if(/chorus|サビ/.test(sec)) l.motion="bounce";               // サビは弾む
-    else if(/bridge|落ち/.test(sec)) l.motion="zoom";                 // 落ちサビはじわ〜
-    else if(/verse/.test(sec)) l.motion="slide";                      // Aメロは流れる
-    else if(/[♪⭐⭐︎☆★！!]/.test(l.text)||/bubble/i.test(l.text)) l.motion="bounce";
-    else if(beforeGap) l.motion="zoom";
-    else if(afterGap) l.motion="burst";
-    else l.motion="popin";
-    // ★デコと字幕スタイルもセクションで自動割り振り（すきま配置と中央下をメインに）
-    if(/chorus|サビ/.test(sec)&&!/pre/.test(sec)){ l.deco="heart"; l.style="bottom"; }
-    else if(/pre/.test(sec)){ l.deco="triangle"; l.style="auto"; }
-    else if(/bridge|落ち/.test(sec)){ l.deco="burst"; l.style="overlay"; }
-    else if(/verse/.test(sec)){ l.deco="circle"; l.style="auto"; }
-    else{ l.deco="random"; l.style=(l.text.length>12?"bottom":"auto"); }
+  zs.forEach((z,zi)=>{
+    if(z.gap) return;
+    const e=energies[zi];
+    const seed=strSeed(String(z.name).toLowerCase());
+    for(let k=z.idx;k<z.z;k++){
+      const l=L[k]; if(l.gap) continue;
+      const p=paramsFromEnergy(e,seed+k); // +kで行ごとに少しだけ揺らす（セクション内が全部同じにならないように）
+      l.motion=isHookLine(l.text)?(e>=0.65?"bounce":p.motion):p.motion; // フックは熱量が高い区間なら必ず弾む
+      l.deco=p.deco;
+      l.style=p.style;
+    }
   });
   renderLineList();
 }
@@ -1692,19 +1684,19 @@ document.addEventListener("DOMContentLoaded",initTextStylePanel);
 if(document.readyState!=="loading") initTextStylePanel();
 
 /* --- F2 P3-4：テーマプリセット（世界観をまとめて切り替え） --- */
-const THEMES={
+const THEMES={ // transPoolは「派手さの弱い→強い順」（11-5：切替演出はΔeでこの配列内の位置を決める）
   ramune:{label:"🫧 ラムネ（標準）",
     textStyle:{color:"#1B6FA8",colorOverlay:"#E2447E",stroke:"#FFFFFF",strokeWidth:0.14,glow:false,glowColor:"#FFD64F",glowBlur:0.35},
-    transPool:["rings","stripes","diamonds","cloud","checker","diag","bubbleup"], deco:"random"},
+    transPool:["cloud","checker","stripes","diamonds","diag","rings","bubbleup"], deco:"random"},
   neon:{label:"💠 ネオン",
     textStyle:{color:"#00E5FF",colorOverlay:"#FF2FD6",stroke:"#0A0A2A",strokeWidth:0.12,glow:true,glowColor:"#00E5FF",glowBlur:0.5},
-    transPool:["circle","white","bubbles","rings"], deco:"burst"},
+    transPool:["white","circle","rings","bubbles"], deco:"burst"},
   retro:{label:"🌇 レトロポップ",
     textStyle:{color:"#FF6B35",colorOverlay:"#FFC300",stroke:"#FFFFFF",strokeWidth:0.16,glow:false,glowColor:"#FFD64F",glowBlur:0.35},
     transPool:["checker","stripes","diamonds"], deco:"diamond"},
   mono:{label:"⚫ モノクロ",
     textStyle:{color:"#222222",colorOverlay:"#555555",stroke:"#FFFFFF",strokeWidth:0.16,glow:false,glowColor:"#FFD64F",glowBlur:0.35},
-    transPool:["white","circle","cloud"], deco:"square"},
+    transPool:["cloud","white","circle"], deco:"square"},
 };
 state.currentTheme="ramune";
 function initThemeSelect(){
@@ -1724,6 +1716,90 @@ function applyTheme(key){
 }
 document.addEventListener("DOMContentLoaded",initThemeSelect);
 if(document.readyState!=="loading") initThemeSelect();
+
+/* ================= MV文法（PLAN.md 11章）：熱量エンジン ================= */
+/* 第1層：セクションタグ → 役割 → 熱量（上から順に部分一致・最初に当たったものを採用）
+   ★順序が重要：「Pre-Chorus」は"chorus"を、「落ちサビ」は"サビ"を部分文字列として含むため、
+   より具体的なパターン（pre-chorus2/pre-chorus/bridge等）を、汎用のchorus|サビより必ず先に置くこと。 */
+const ROLE_ENERGY=[
+  [/last.?chorus|ラス.?サビ/i, 1.00],
+  [/pre.?chorus.?2|プレ.?サビ.?2/i, 0.68],
+  [/chorus.?2|サビ.?2/i, 0.90],
+  [/pre.?chorus|ビート前|プレ.?サビ/i, 0.60],
+  [/bridge|落ち/i, 0.15], // ★意図的に全曲最小。ここで一度落とすからラスサビが効く
+  [/chorus|サビ/i, 0.85], // chorus系の汎用フォールバック（必ず上記より後）
+  [/verse.?2|aメロ.?2/i, 0.45],
+  [/verse|aメロ/i, 0.35],
+  [/instrumental/i, 0.30],
+  [/outro/i, 0.25],
+  [/intro/i, 0.20],
+];
+function energyOfSectionName(name){
+  const s=String(name||"");
+  for(const [re,e] of ROLE_ENERGY) if(re.test(s)) return e;
+  return null; // 未知タグはnull＝呼び出し側で前後の平均にフォールバック
+}
+function energyOfGapName(name){ // 前奏・間奏・後奏（secZones()のgap名は（）を除いたテキスト）
+  const s=String(name||"");
+  if(/前奏/.test(s)) return 0.20;
+  if(/後奏/.test(s)) return 0.25;
+  return 0.30; // 間奏
+}
+/* zones: secZones()の戻り値。各ゾーンに1つの熱量を割り当てる（未知タグは前後の既知値の平均） */
+function computeZoneEnergies(zones){
+  const energies=zones.map(z=>z.gap?energyOfGapName(z.name):energyOfSectionName(z.name));
+  for(let i=0;i<energies.length;i++){
+    if(energies[i]!==null) continue;
+    let prev=null,next=null;
+    for(let j=i-1;j>=0;j--) if(energies[j]!==null){ prev=energies[j]; break; }
+    for(let j=i+1;j<energies.length;j++) if(energies[j]!==null){ next=energies[j]; break; }
+    energies[i]=(prev!==null&&next!==null)?(prev+next)/2:(prev??next??0.5);
+  }
+  return energies;
+}
+function strSeed(s){ let h=0; s=String(s); for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))|0; return Math.abs(h); }
+const DECO_BAND={
+  low:["circle","square"],
+  mid:["triangle","diamond","random"],
+  high:["heart","burst","question"],
+};
+/* 第3層：熱量 → 全パラメータの導出（PLAN.md 11-5の対応表） */
+function paramsFromEnergy(e,seed){
+  const r=k=>hash01(seed*1.7+k); // 役割ごとに固定された疑似乱数（同じ役割は毎回同じ選択＝11-6 A 反復ルール）
+  let motion;
+  if(e<0.30) motion=r(1)<0.5?"fuwa":"zoom";
+  else if(e<0.65) motion=r(2)<0.5?"popin":"slide";
+  else motion=r(3)<0.5?"bounce":"burst";
+  const band=e<0.30?"low":(e<0.65?"mid":"high");
+  const decoPool=DECO_BAND[band];
+  const decoOn=r(4)<(0.15+e*0.7); // 熱量が高いほどデコを出す確率が上がる（11-6 D 密度の呼吸）
+  const deco=decoOn?decoPool[Math.floor(r(5)*decoPool.length)]:"none";
+  const style=e>0.75?"overlay":(e>0.45?"bottom":"auto");
+  const fx=e<0.35?"none":(e<0.70?"bubbles":(r(6)<0.5?"sparkle":"flare"));
+  const charSize=e<0.40?"0.7":(e<0.75?"1":"1.4");
+  const charMotion=e<0.30?"still":(e<0.70?"sway":"bounce");
+  const punch=e*0.06;
+  return {motion,deco,style,fx,charSize,charMotion,punch};
+}
+/* 切替演出：絶対的な熱量ではなく「前セクションとの変化量Δe」で選ぶ（11-5末尾）。
+   poolは「派手さの弱い→強い順」の配列。Δeが大きいほど派手な演出を選ぶ。 */
+function pickTransitionForDelta(pool,deltaE){
+  if(!pool||pool.length===0) return "none";
+  const idx=Math.max(0,Math.min(pool.length-1,Math.floor(Math.abs(deltaE)*pool.length)));
+  return pool[idx];
+}
+/* フックのsignature化（11-6 B）：曲名（クレジットの【曲名】）に含まれる語を歌詞行が含む場合の判定を一般化。
+   曲名が無い/短すぎる場合は絵文字系の記号のみで判定（従来の/bubble/iベタ書きを撤廃） */
+function hookWordsFromTitle(){
+  const titleC=(state.credits||[]).find(c=>/曲名|タイトル|title/i.test(c.label));
+  const title=(titleC&&titleC.value)||state.title||"";
+  return String(title).split(/[\s　・/／,、]+/).map(w=>w.trim()).filter(w=>w.length>=2);
+}
+function isHookLine(text){
+  if(/[♪⭐⭐︎☆★！!]/.test(text)) return true;
+  const words=hookWordsFromTitle();
+  return words.some(w=>text.includes(w));
+}
 
 function easeOf(l){ return (l&&l.ease)?{...state.easeDefault,...l.ease}:state.easeDefault; }
 function easeFnOf(l){
@@ -2544,51 +2620,59 @@ function drawBeatLamp(t){
 }
 
 /* --- おまかせMV --- */
-async function omakaseMV(){
+async function omakaseMV(){ // MV文法（PLAN.md 11章）：熱量エンジンで組み立てる
   if(audioBlob) await autoBPM(); // ★BPM・1拍目も自動
   if(state.lines.length===0){ alert("先に①でJSONを読み込んでね"); return; }
   pushUndo();
   _undoSuppress=true; // 内部で呼ぶaddGapLines/recommendMotionsは二重にUndo履歴を積まない
   addGapLines();          // 前奏・間奏・後奏に行番号
-  recommendMotions();     // モーション自動割り振り
+  recommendMotions();     // モーション/デコ/配置を熱量から自動割り振り
   _undoSuppress=false;
   $("charPace").value="phrase";
   $("lyricStyle").value="auto";
   const theme=THEMES[state.currentTheme]||THEMES.ramune;
-  $("lyricDeco").value=theme.deco;
+  $("lyricDeco").value=theme.deco; // 個別行は熱量から決まるが、フォールバックの既定値としてテーマの傾向を残す
 
-  const bs=sectionBoundaries();
-  const FLASHY=theme.transPool;
-  bs.forEach((b,i)=>{ if(i>0) b.line.trans=FLASHY[Math.floor(hash01(i*17+3)*FLASHY.length)]; }); // セクション境目に派手な切替演出（テーマの傾向から選ぶ）
+  const zs=secZones();
+  const energies=computeZoneEnergies(zs);
+
+  // ★切替演出：絶対熱量ではなく「前ゾーンとの熱量差Δe」で選ぶ（11-5）→ ここぞで一番派手な演出が入る
+  zs.forEach((z,i)=>{
+    if(i===0) return;
+    const first=state.lines[z.idx];
+    const deltaE=energies[i]-energies[i-1];
+    first.trans=pickTransitionForDelta(theme.transPool,deltaE);
+  });
 
   // ★統合タイムラインに直接おまかせ割り振り（各ゾーンの先頭行にbg/ch/fxをセット＝以降へ引き継がれる）
-  const zs=secZones();
   let bgi=0, chi=0;
   zs.forEach((z,i)=>{
     const first=state.lines[z.idx]; if(!first) return;
-    const isChorus=/chorus|サビ/i.test(z.name)&&!/pre/i.test(z.name);
+    const e=energies[i];
+    const seed=strSeed(String(z.name).toLowerCase());
+    const p=paramsFromEnergy(e,seed);
     if(state.bgs.length) first.bg=state.bgs[(bgi++)%state.bgs.length].name;
-    if(z.gap){ first.ch="none"; first.fx="bubbles"; }
+    if(z.gap){ first.ch="none"; first.fx=e<0.25?"none":"bubbles"; }
     else{
       if(state.chars.length){
         first.ch=state.chars[chi%state.chars.length].name;
         first.chPos=["right","left","center"][chi%3];
-        first.chSize=isChorus?"1.4":"1";
-        first.chMotion=isChorus?"bounce":"sway";
+        first.chSize=p.charSize;
+        first.chMotion=p.charMotion;
         chi++;
       }
-      first.fx=isChorus?"sparkle":"none";
+      first.fx=p.fx;
     }
   });
-  // セクション頭（前奏・間奏の直後の行）に丸ぽんっ
+  // フックの行（曲名の語 or ♪⭐等）＋熱量の高いセクション頭に丸ぽんっ（11-6 B：ベタ書きの/bubble/iを撤廃し曲名から一般化）
   state.lines.forEach((l,i)=>{
     if(l.gap){ l.pop=false; return; }
-    l.pop=(i===0)||state.lines[i-1].gap;
+    l.pop=(i===0)||state.lines[i-1].gap||isHookLine(l.text);
   });
   state.fx.always="bubbles"; // 曲全体にうっすらしゃぼん玉（旧・fxBubbles="all"相当）
   $("fxAlways").value="bubbles";
   renderLineList();
-  alert("🪄 おまかせ設定をセットしました！\n・セクション境目に切替演出ランダム\n・背景＆キャラをセクション単位でローテーション（サビは2体＆跳ねる）\n・モーション/デコ/エフェクトも自動\nあとは②で好きに上書きしてね");
+  alert("🪄 おまかせ設定をセットしました！（MV文法：セクションの熱量から演出を組み立てています）\n・熱量の変化が大きい境目ほど派手な切替演出\n・落ちサビは熱量最小、ラスサビは最大\n・同じ役割のセクションは同じ系統の演出\nあとは②で好きに上書きしてね");
 }
 
 /* --- フレーム --- */
