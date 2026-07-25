@@ -191,7 +191,8 @@
           <button class="btn ghost" onclick="undo()" title="Ctrl+Z">↩ 元に戻す</button>
           <button class="btn ghost" onclick="redo()" title="Ctrl+Shift+Z">↪ やり直す</button>
         </div>
-        <span class="note">🔍 仮合成プレビュー：再生・バー・下の歌詞行クリックで完成形を確認（背景・キャラ・字幕・デコ全部入り）</span>
+        <span class="note">🔍 仮合成プレビュー：再生・バー・下の歌詞行クリックで完成形を確認（背景・キャラ・字幕・デコ全部入り）</span><br>
+        <span class="note">⌨ ショートカット：<b>Space</b> 再生/一時停止・<b>←→</b> 5秒送り（<b>Shift+←→</b>で1秒）・<b>Home</b> 曲頭へ・<b>Ctrl+Z / Ctrl+Shift+Z</b> 元に戻す/やり直す</span>
       </div>
     </div>
 
@@ -322,6 +323,7 @@
       <button class="btn ghost" onclick="pvSeekRel(5)">+5s ⏩</button>
       <span class="timecode" id="pvTimecode">0:00.00</span>
     </div>
+    <p class="note">⌨ ショートカット：<b>Space</b> 再生/一時停止・<b>←→</b> 5秒送り（<b>Shift+←→</b>で1秒）・<b>Home</b> 曲頭へ</p>
     <h2 style="margin-top:20px;">🎬 動画書き出し（WebM）</h2>
     <div class="row">
       <label>画質
@@ -852,7 +854,7 @@ function renderLineList(){
       nm.textContent=l.gap?"["+l.text.replace(/[（）()]/g,"")+"]":"［"+l.section+"］";
       nm.style.cssText="min-width:100px;";
       hd.appendChild(nm);
-      if(!l.gap){
+      {
         const lab=document.createElement("span"); lab.className="note"; lab.textContent="切替演出:";
         const sel=document.createElement("select");
         for(const k in SEC_TRANS){ const o=document.createElement("option"); o.value=k; o.textContent=SEC_TRANS[k]; sel.appendChild(o); }
@@ -874,10 +876,16 @@ function renderLineList(){
         );
       }else{
         // セクション見出しは直下の最初の歌詞行と同じデータを指すため、切替演出だけに絞る
-        // （背景・キャラ・FXは直下の行を開いて設定すればセクション全体に引き継がれる）
-        const hint=document.createElement("span"); hint.className="note";
-        hint.textContent="↓直下の行を開くと背景・キャラ・FXをこのセクション全体に設定できます";
-        hd.appendChild(hint);
+        // （背景・キャラ・FXは直下の行を開けばセクション全体に設定できる → ボタンで直接開く）
+        const hintBtn=document.createElement("button"); hintBtn.className="btn ghost"; hintBtn.type="button";
+        hintBtn.style.cssText="font-size:.75rem; padding:4px 10px;";
+        hintBtn.textContent="↓ 直下の行を開いて背景・キャラ・FXを設定";
+        hintBtn.onclick=e=>{
+          e.stopPropagation();
+          const next=hd.nextElementSibling;
+          if(next && next.tagName==="DETAILS"){ next.open=true; next.scrollIntoView({block:"center",behavior:"smooth"}); }
+        };
+        hd.appendChild(hintBtn);
       }
       hd.onclick=()=>{ if(typeof renderMini==="function") renderMini(Math.max(0,lineTime(l)-0.5)); };
       box.appendChild(hd);
@@ -1102,10 +1110,11 @@ function renderSectionSummary(){
   renderSectionFxCards();
 }
 const SEC_TRANS={none:"なし",rings:"多重丸",stripes:"多重ボーダー",diamonds:"多重ダイヤ",cloud:"雲ポフっ",checker:"チェックタイル",diag:"斜めスライド",bubbleup:"下からバブル",white:"ホワイトフラッシュ",circle:"円ワイプ",bubbles:"泡ワイプ"};
-function sectionBoundaries(){ // セクションが切り替わる最初の行
+function sectionBoundaries(){ // セクションが切り替わる最初の行＋間奏行（前奏/間奏/後奏）も切替演出の対象に含む
   const out=[]; let prev=null;
   state.lines.forEach((l,i)=>{
-    if(l.gap||!l.section) return;
+    if(l.gap){ out.push({line:l, idx:i, name:l.text}); prev=null; return; }
+    if(!l.section) return;
     if(l.section!==prev){ out.push({line:l, idx:i, name:l.section}); prev=l.section; }
   });
   return out;
@@ -1426,6 +1435,27 @@ document.addEventListener("keydown",e=>{
   if(tap.active&&!$("pane0").classList.contains("hidden")){
     if(e.code==="Space"){ e.preventDefault(); doTap2(); }
     else if(e.code==="Backspace"){ e.preventDefault(); tapUndo(); }
+    return;
+  }
+  // ⌨ 動画編集ソフト風ショートカット（②編集画面＝仮合成プレビュー／③プレビュー画面が対象）
+  const editing=!$("pane1").classList.contains("hidden");
+  const previewing=!$("pane2").classList.contains("hidden");
+  if(!editing&&!previewing) return;
+  if(e.code==="Space"){
+    e.preventDefault();
+    if(previewing) pvToggle(); else miniToggle();
+  }else if(e.code==="ArrowLeft"){
+    e.preventDefault();
+    const d=e.shiftKey?-1:-5;
+    if(previewing) pvSeekRel(d); else miniSeekRel(d);
+  }else if(e.code==="ArrowRight"){
+    e.preventDefault();
+    const d=e.shiftKey?1:5;
+    if(previewing) pvSeekRel(d); else miniSeekRel(d);
+  }else if(e.code==="Home"){
+    e.preventDefault();
+    if(previewing) pvSeek(0);
+    else if(audio.src){ audio.currentTime=0; if(!mini.playing) renderMini(0); }
   }
 });
 setInterval(()=>{ if(tap.active) $("tapTime").textContent=fmt(audio.currentTime); },80);
