@@ -84,16 +84,19 @@
   <!-- ① 素材 -->
   <section class="panel" id="pane0">
     <div class="dropzone" id="mediaZone">
-    <div class="dropbanner" style="border:none; background:transparent; padding:2px;">⬇️ この点線ワク内に <b>MP3・JSON・フォント・歌詞txt</b> をドラッグ＆ドロップOK🫧</div>
-    <h2>3点セット＋お好みでフォント</h2>
+    <h2>① まず2つ用意：🎵 曲(MP3) と 📄 歌詞タイミング(JSON)</h2>
+    <p class="note" style="margin:2px 0 10px;">下のボタンで選ぶか、この点線ワクのどこにファイルをドラッグ＆ドロップしても、種類(MP3/JSON/フォント/歌詞txt)を自動で判別して読み込みます🫧</p>
     <div class="row">
-      <label class="filebtn">🎵 MP3<input type="file" id="audioFile" accept="audio/*"></label>
+      <label class="filebtn">🎵 MP3を選ぶ<input type="file" id="audioFile" accept="audio/*"></label>
       <span class="filename" id="audioName">未選択</span>
+      <span class="note">曲の音声ファイル</span>
     </div>
     <div class="row">
-      <label class="filebtn">📄 タイミング/プロジェクトJSON<input type="file" id="jsonFile" accept=".json,application/json"></label>
+      <label class="filebtn">📄 タイミング/プロジェクトJSONを選ぶ<input type="file" id="jsonFile" accept=".json,application/json"></label>
       <span class="filename" id="jsonName">未選択</span>
+      <span class="note">🎤タップ打ち込みで新規作成もOK（下）</span>
     </div>
+    <h3 style="margin-top:20px;">🔤 フォント（お好みで）</h3>
     <div class="row">
       <label>フォント
         <select id="fontSelect">
@@ -105,10 +108,10 @@
           <option value='"Yu Gothic UI","Yu Gothic","游ゴシック"'>游ゴシック</option>
         </select>
       </label>
-      <label class="filebtn" style="background:#E4F3FC;color:var(--soda-deep);">🔤 フォント追加（ttf/otf/woff2・複数OK）<input type="file" id="fontFile" accept=".ttf,.otf,.woff,.woff2" multiple></label>
+      <label class="filebtn" style="background:#E4F3FC;color:var(--soda-deep);">🔤 フォントを追加（ttf/otf/woff2・複数OK）<input type="file" id="fontFile" accept=".ttf,.otf,.woff,.woff2" multiple></label>
       <span class="note" id="fontName">追加したフォントは🔤付きでメニューに増え、このブラウザに保存されて次回も使えます</span>
     </div>
-    <h3>📖 セクション読み取り（[Verse 1]付きの歌詞テキスト・.txtのD&DもOK）</h3>
+    <h3 style="margin-top:20px;">📖 セクション読み取り（[Verse 1]付きの歌詞テキスト・.txtのD&DもOK）</h3>
     <div class="row">
       <label class="filebtn" style="background:#E4F3FC;color:var(--soda-deep);">📄 歌詞txtを選ぶ<input type="file" id="lyricTxtFile" accept=".txt,text/plain"></label>
       <span class="note">貼り付け・D&Dの代わりにファイル選択でも読み込めます</span>
