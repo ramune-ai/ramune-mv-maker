@@ -233,8 +233,10 @@
       </label>
     </div>
 
-    <h2 style="margin-top:18px;">🎞 演出タイムライン（行ごとの編集）</h2>
-    <p class="note" style="margin:0 0 6px;">各行：<b>モーション／デコ／配置</b>の3つを選べます。行クリック→上のミニプレビューでその瞬間を確認。［セクション名］の行では切替演出も選べます。</p>
+    <h2 style="margin-top:18px;">🎞 演出＋素材タイムライン（行ごとにまとめて編集）</h2>
+    <p class="note" style="margin:0 0 6px;">各行：<b>モーション／デコ／配置／背景／キャラ／エフェクト</b>を選べます。空欄「（引継）」はひとつ上の行から続けるという意味です。
+      ［セクション名］や（間奏）の行はまとめ役：ここで背景・キャラ・エフェクトの初期値を置くと、次の見出しまでの行に引き継がれます。
+      行クリック→上のミニプレビューでその瞬間を確認できます。</p>
     <div class="row">
       <label>全体のデフォルト
         <select id="defaultMotion">
@@ -272,11 +274,8 @@
     </div>
     <div class="row">
       <button class="btn ghost" onclick="addGapLines()">🎼 前奏・間奏・後奏に行番号を振る</button>
-      <span class="note">10秒以上の歌なし区間に「（間奏）」行を追加。エフェクトや背景切替の指定に使えます（歌詞は表示されません）</span>
+      <span class="note">10秒以上の歌なし区間に「（間奏）」行を追加。ここも背景・キャラ・エフェクトのまとめ役になります</span>
     </div>
-    <div id="lineList"></div>
-
-    <h2 style="margin-top:18px;">🎬 素材タイムライン（セクションごとの背景・キャラ・エフェクト）</h2>
     <div class="row">
       <label>✨ 常時エフェクト
         <select id="fxAlways">
@@ -285,35 +284,9 @@
           <option value="flare">🌟 フレア</option>
         </select>
       </label>
-      <span class="note">曲全体にずっとかかるエフェクト（ゾーンごとの指定と併用OK）</span>
+      <span class="note">曲全体にずっとかかるエフェクト（行ごとの指定と併用OK）</span>
     </div>
-    <div id="secAssignBox"><span class="note">①でセクションを読み取ると、[前奏][Verse 1][間奏]…ごとに背景・キャラ・エフェクトをプルダウンで選べる表が出ます。左のサムネにその場で合成結果をプレビュー。※下の行番号欄は自動で書き換わります</span></div>
-
-    <h2 style="margin-top:18px;">キャラの登場（行番号で指定）</h2>
-    <div id="charDirect"></div>
-    <p class="note">「9-12, 21-24」のように指定。サイズ：大＝画面ドン（上下はみ出しOK・頭は安全圏に収める）／中＝画面に収まる／小＝ワンポイント。
-      ⚠️ 上の「素材タイムライン」でキャラを割り当てている間は、そちらが優先されこの欄の指定は使われません（消えてはいないので安心してください）。
-      素材タイムラインの各ゾーンを「キャラなし」に戻すと、この欄の指定が使われるようになります。</p>
-
-    <!-- P0-3: 個別エフェクトの行番号指定は state.fx が正。UIは②のゾーン表／🪄おまかせが自動生成する -->
-
-    <h2 style="margin-top:18px;">背景の切り替え（行番号）とトランジション</h2>
-    <p class="note">⚠️ 上の「素材タイムライン」で背景を割り当てると、この欄は自動的に書き換わります（直接編集した内容は上書きされます）。</p>
-    <div class="row" style="display:none;">
-      <label>背景切替時の演出
-        <select id="bgTransition">
-          <option value="rings">多重丸（リング広がり）</option>
-          <option value="stripes">多重ボーダー（しましまスライド）</option>
-          <option value="diamonds">多重ダイヤ</option>
-          <option value="cloud">雲ポフっ</option>
-          <option value="white">ホワイトフラッシュ</option>
-          <option value="circle">円ワイプ</option>
-          <option value="bubbles">泡ワイプ</option>
-          <option value="cut">カット（即切り替え）</option>
-        </select>
-      </label>
-    </div>
-    <div id="bgDirect"></div>
+    <div id="lineList"></div>
 
     <div class="row" style="margin-top:14px;">
       <button class="btn pink" onclick="exportProject()">💾 プロジェクトJSONを書き出す</button>
@@ -366,7 +339,7 @@ const state = {
   bgs:[],     // {name, img, ranges}
   chars:[],   // {name, imgRaw, imgKeyed, keyMode, keyStrength, ranges, pos, size, cmotion}
   fontFamily:null,
-  fx:{bubbles:"",sparkle:"",pop:"",flare:"",sakura:"",always:""}, // P0-3：エフェクト行番号指定はDOMでなくstateが正
+  fx:{always:""}, // 常時エフェクトのみ。行ごとのエフェクトはstate.lines[].fxが正（統合タイムライン）
 };
 const audio=new Audio(); audio.preload="auto";
 const $=id=>document.getElementById(id);
@@ -449,7 +422,7 @@ function showTab(n){
     $("tab"+i).classList.toggle("active",i===n);
     $("pane"+i).classList.toggle("hidden",i!==n);
   }
-  if(n===1){ renderLineList(); renderCharDirect(); renderBgDirect(); renderSecAssign(); }
+  if(n===1){ renderLineList(); }
   if(n===2){ drawFrame(effT()); }
 }
 
@@ -473,7 +446,8 @@ $("jsonFile").addEventListener("change",e=>{
 function loadTiming(d){
   if(!Array.isArray(d.lines)) throw new Error("lines がありません");
   state.lines=d.lines.filter(l=>typeof l.time==="number")
-    .map(l=>({text:String(l.text), time:l.time, motion:l.motion||"default", deco:l.deco, style:l.style, gap:!!l.gap, section:l.section, trans:l.trans}));
+    .map(l=>({text:String(l.text), time:l.time, motion:l.motion||"default", deco:l.deco, style:l.style, gap:!!l.gap, section:l.section, trans:l.trans,
+      bg:l.bg, ch:l.ch, chPos:l.chPos, chSize:l.chSize, chMotion:l.chMotion, fx:l.fx, pop:!!l.pop}));
   state.title=d.title||state.title;
   if(Array.isArray(d.credits)) state.credits=d.credits;
   state.savedSettings=d.settings||null;
@@ -482,19 +456,19 @@ function loadTiming(d){
   if($("sectionText").value.trim()) importSections();
   $("jsonName").textContent=(d.settings?"✅ 歌詞＋演出設定を復元（画像/曲/フォントは同じファイルを選び直せば自動紐付け）":"✅ 歌詞タイミングを読込");
 }
-/* 素材を後から読み込んでも、保存済み設定を名前で自動紐付け */
+/* 素材を後から読み込んでも、保存済みのクロマキー設定（keyMode/keyStrength）を名前で自動紐付け
+   ※背景・キャラの「どの行に出すか」は行タイムライン側（l.bg/l.ch）にmigrateLegacyToLinesで直接反映済みなのでここでは扱わない */
 function rebindAssets(){
   const s=state.savedSettings; if(!s) return;
-  if(Array.isArray(s.bgs)) s.bgs.forEach(sb=>{
-    const b=state.bgs.find(x=>x.name===sb.name);
-    if(b&&!b.ranges) b.ranges=sb.ranges??(sb.fromLine!=null?sb.fromLine+"-999":"");
-  });
   if(Array.isArray(s.chars)) s.chars.forEach(sc=>{
     const c=state.chars.find(x=>x.name===sc.name);
-    if(c&&c.ranges===""){ Object.assign(c,{ranges:sc.ranges,pos:sc.pos,size:sc.size,keyStrength:sc.keyStrength??1,cmotion:sc.cmotion||c.cmotion});
-      if(sc.keyMode!==undefined){ c.keyMode=sc.keyMode; c.imgKeyed=(c.keyMode==="none")?null:chromaKey(c.imgRaw,c.keyStrength,c.keyMode); } }
+    if(c && !c._rebound && sc.keyMode!==undefined){
+      c._rebound=true;
+      c.keyMode=sc.keyMode; c.keyStrength=sc.keyStrength??1;
+      c.imgKeyed=(c.keyMode==="none")?null:chromaKey(c.imgRaw,c.keyStrength,c.keyMode);
+    }
   });
-  renderBgDirect(); renderCharDirect();
+  renderCharList();
 }
 /* --- フォントライブラリ（IndexedDBに保存＝次回も使える） --- */
 function fontDB(){
@@ -537,7 +511,8 @@ function projectData(){
     exportedAt:new Date().toISOString(),
     credits:state.credits,
     sectionText:$("sectionText").value,
-    lines:state.lines.map(l=>({text:l.text,time:l.time,motion:l.motion||"default",deco:l.deco||undefined,style:l.style||undefined,gap:!!l.gap||undefined,section:l.section||undefined,trans:l.trans||undefined})),
+    lines:state.lines.map(l=>({text:l.text,time:l.time,motion:l.motion||"default",deco:l.deco||undefined,style:l.style||undefined,gap:!!l.gap||undefined,section:l.section||undefined,trans:l.trans||undefined,
+      bg:l.bg||undefined,ch:l.ch||undefined,chPos:l.chPos||undefined,chSize:l.chSize||undefined,chMotion:l.chMotion||undefined,fx:l.fx||undefined,pop:l.pop||undefined})),
     settings:gatherSettings()};
 }
 setInterval(()=>{ // 4秒ごとに自動保存
@@ -661,8 +636,8 @@ $("bgFile").addEventListener("change",e=>{
 function addBgFiles(files,skipSave){
   loadImages(files,(f,img)=>{
     if(!skipSave) saveAsset("bg",f.name,f);
-    state.bgs.push({name:f.name,img,ranges:""});
-    renderBgList(); renderBgDirect(); rebindAssets(); drawFrame(effT());
+    state.bgs.push({name:f.name,img});
+    renderBgList(); rebindAssets(); renderLineList(); drawFrame(effT());
   });
 }
 $("charFile").addEventListener("change",e=>{
@@ -674,10 +649,10 @@ function addCharFiles(files,skipSave){
     if(state.chars.length>=8) return;
     if(!skipSave) saveAsset("char",f.name,f);
     const keyMode=detectKeyMode(img);
-    const ch={name:f.name,imgRaw:img,imgKeyed:null,keyMode,keyStrength:1,ranges:"",pos:"right",size:1,cmotion:"sway"};
+    const ch={name:f.name,imgRaw:img,imgKeyed:null,keyMode,keyStrength:1};
     if(keyMode!=="none") ch.imgKeyed=chromaKey(img,ch.keyStrength,keyMode);
     state.chars.push(ch);
-    renderCharList(); renderCharDirect(); rebindAssets(); drawFrame(effT());
+    renderCharList(); rebindAssets(); renderLineList(); drawFrame(effT());
   });
 }
 
@@ -780,7 +755,7 @@ function renderBgList(){
     const im=document.createElement("img"); im.className="thumb"; im.src=b.img.src;
     const nm=document.createElement("span"); nm.textContent=b.name;
     const del=document.createElement("button"); del.className="del"; del.textContent="削除";
-    del.onclick=()=>{ deleteAsset("bg",b.name); state.bgs.splice(i,1); renderBgList(); renderBgDirect(); };
+    del.onclick=()=>{ deleteAsset("bg",b.name); state.bgs.splice(i,1); renderBgList(); renderLineList(); };
     c.append(im,nm,del); box.appendChild(c);
   });
 }
@@ -809,57 +784,117 @@ function renderCharList(){
     st.onchange=()=>{ ch.keyStrength=parseFloat(st.value);
       if(ch.keyMode!=="none"){ ch.imgKeyed=chromaKey(ch.imgRaw,ch.keyStrength,ch.keyMode); renderCharList(); drawFrame(effT()); } };
     const del=document.createElement("button"); del.className="del"; del.textContent="削除";
-    del.onclick=()=>{ deleteAsset("char",ch.name); state.chars.splice(i,1); renderCharList(); renderCharDirect(); };
+    del.onclick=()=>{ deleteAsset("char",ch.name); state.chars.splice(i,1); renderCharList(); renderLineList(); };
     c.append(im,nm,km,st,del); box.appendChild(c);
   });
 }
 
 /* ================= ② 演出指定 ================= */
 const MOTIONS={default:"（デフォルト）",popin:"ポップイン",bounce:"ビートバウンス",zoom:"じわズーム",burst:"文字弾け",slide:"スローイン・アウト",fuwa:"ふわっと（やさしく漂う）"};
+/* --- 統合タイムライン用：背景／キャラ／エフェクトの選択肢 --- */
+const FX_OPTS=[["","（引継）"],["none","エフェクトなし"],["bubbles","🫧 しゃぼん玉"],["sparkle","✨ キラキラ"],["sakura","🌸 桜"],["flare","🌟 フレア"]];
+const POS_OPTS=[["right","右"],["left","左"],["center","中央"]];
+const SIZE_OPTS=[["1","中"],["0.7","小"],["1.4","大"]];
+const CMO_OPTS=[["sway","ふわふわ"],["bounce","跳ねる"],["still","静止"]];
+function bgFieldOpts(){ return [["","（引継）"],["none","背景なし(グラデ)"],...state.bgs.map(b=>[b.name,"🖼 "+b.name])]; }
+function chFieldOpts(){ return [["","（引継）"],["none","キャラなし"],...state.chars.map(c=>[c.name,"🧍 "+c.name])]; }
+/* opts:[[value,label],...]  key: l[key]に読み書きするフィールド名  emptyValue: 未設定時に選択欄に出す値 */
+function mkFieldSel(l,opts,key,{fullRerender=false,emptyValue=""}={}){
+  const sel=document.createElement("select");
+  for(const [v,lab] of opts){ const o=document.createElement("option"); o.value=v; o.textContent=lab; sel.appendChild(o); }
+  sel.value=(l[key]!==undefined&&l[key]!==null&&l[key]!=="")?l[key]:emptyValue;
+  sel.onchange=()=>{
+    pushUndo(); l[key]=sel.value;
+    if(key==="motion"&&typeof updateEasePanelVisibility==="function") updateEasePanelVisibility();
+    if(fullRerender) renderLineList();
+  };
+  sel.onclick=e=>e.stopPropagation();
+  return sel;
+}
+function renderRowPreview(cv2,z){ // メインcanvasに描いて縮小コピー（見出し行専用のサムネ）
+  const tA=lineTime(state.lines[z.idx]);
+  const zEnd=(z.z<state.lines.length)?lineTime(state.lines[z.z]):tA+6;
+  const mid=Math.min(tA+(z.gap?1.5:2.2),(tA+zEnd)/2);
+  suppressLamp=true; resetDeco(); drawFrame(mid); suppressLamp=false;
+  const c2=cv2.getContext("2d");
+  c2.clearRect(0,0,cv2.width,cv2.height);
+  c2.drawImage(cv,0,0,cv2.width,cv2.height);
+}
 function renderLineList(){
   const box=$("lineList"); box.innerHTML="";
+  const zones=secZones(); let zi=0;
   let prevSec=null;
   state.lines.forEach((l,i)=>{
-    if(!l.gap && l.section && l.section!==prevSec){
-      const hd=document.createElement("div");
-      hd.className="lrow";
-      hd.style.cssText="background:#DFF2FE;font-weight:800;color:var(--soda-deep);gap:12px;";
-      const nm=document.createElement("span"); nm.textContent="［"+l.section+"］"; nm.style.flex="1";
-      const lab=document.createElement("span"); lab.className="note"; lab.textContent="切替演出:";
-      const sel=document.createElement("select");
-      for(const k in SEC_TRANS){ const o=document.createElement("option"); o.value=k; o.textContent=SEC_TRANS[k]; sel.appendChild(o); }
-      sel.value=l.trans||"none";
-      sel.onchange=()=>{ pushUndo(); l.trans=sel.value; };
-      sel.onclick=e=>e.stopPropagation();
+    const isZoneHead=l.gap||(l.section&&l.section!==prevSec);
+    if(isZoneHead){
+      const z=zones[zi]; zi++;
+      const hd=document.createElement("div"); hd.className="lrow";
+      hd.style.cssText="background:"+(l.gap?"#FBF7EC":"#DFF2FE")+";font-weight:800;color:"+(l.gap?"#A08C5B":"var(--soda-deep)")+";gap:8px;flex-wrap:wrap;align-items:center;";
+      if(z){
+        const pv2=document.createElement("canvas"); pv2.width=96; pv2.height=54;
+        pv2.style.cssText="border-radius:6px;background:#000;flex-shrink:0;cursor:pointer;";
+        pv2.title="クリックで上のミニプレビューに表示";
+        pv2.onclick=e=>{ e.stopPropagation(); renderMini(lineTime(l)+(l.gap?1:1.2)); };
+        hd.appendChild(pv2);
+        renderRowPreview(pv2,z);
+      }
+      const nm=document.createElement("span");
+      nm.textContent=l.gap?"["+l.text.replace(/[（）()]/g,"")+"]":"［"+l.section+"］";
+      nm.style.cssText="min-width:100px;";
+      hd.appendChild(nm);
+      if(!l.gap){
+        const lab=document.createElement("span"); lab.className="note"; lab.textContent="切替演出:";
+        const sel=document.createElement("select");
+        for(const k in SEC_TRANS){ const o=document.createElement("option"); o.value=k; o.textContent=SEC_TRANS[k]; sel.appendChild(o); }
+        sel.value=l.trans||"none";
+        sel.onchange=()=>{ pushUndo(); l.trans=sel.value; };
+        sel.onclick=e=>e.stopPropagation();
+        hd.append(lab,sel);
+      }
+      const mkLbl=(text,el)=>{ const w=document.createElement("label"); w.className="note"; w.style.cssText="display:flex;align-items:center;gap:3px;"; w.append(text,el); return w; };
+      hd.append(
+        mkLbl("背景",mkFieldSel(l,bgFieldOpts(),"bg",{fullRerender:true})),
+        mkLbl("キャラ",mkFieldSel(l,chFieldOpts(),"ch",{fullRerender:true})),
+        mkLbl("位置",mkFieldSel(l,POS_OPTS,"chPos",{emptyValue:"right"})),
+        mkLbl("大きさ",mkFieldSel(l,SIZE_OPTS,"chSize",{emptyValue:"1"})),
+        mkLbl("動き",mkFieldSel(l,CMO_OPTS,"chMotion",{emptyValue:"sway"})),
+        mkLbl("FX",mkFieldSel(l,FX_OPTS,"fx"))
+      );
       hd.onclick=()=>{ if(typeof renderMini==="function") renderMini(Math.max(0,lineTime(l)-0.5)); };
-      hd.append(nm,lab,sel);
       box.appendChild(hd);
-      prevSec=l.section;
+      if(!l.gap) prevSec=l.section;
     }
-    const row=document.createElement("div"); row.className="lrow";
+    if(l.gap) return; // 間奏などは見出し行のみで完結（歌詞本文が無いので通常行は作らない）
+
+    const row=document.createElement("div"); row.className="lrow"; row.style.flexWrap="wrap";
     const no=document.createElement("span"); no.className="no"; no.textContent=(i+1);
     const t=document.createElement("span"); t.className="t"; t.textContent=fmt(l.time);
     const txt=document.createElement("span"); txt.className="txt"; txt.textContent=l.text;
-    if(l.gap){
-      txt.textContent="["+l.text.replace(/[（）()]/g,"")+"]";
-      row.style.background="#F7F1E3";
-      txt.style.color="#A08C5B"; txt.style.fontWeight="700";
-      row.append(no,t,txt);
-    }else{
-      const mk=(dict,key)=>{
-        const sel=document.createElement("select");
-        for(const k in dict){ const o=document.createElement("option"); o.value=k; o.textContent=dict[k]; sel.appendChild(o); }
-        sel.value=l[key]||"default";
-        sel.onchange=()=>{ pushUndo(); l[key]=sel.value; if(key==="motion"&&typeof updateEasePanelVisibility==="function") updateEasePanelVisibility(); };
-        sel.onclick=e=>e.stopPropagation();
-        return sel;
-      };
-      row.append(no,t,txt,mk(MOTIONS,"motion"),mk(DECO_SEL,"deco"),mk(STYLE_SEL,"style"));
-    }
+    row.append(no,t,txt,
+      mkFieldSel(l,Object.entries(MOTIONS),"motion",{emptyValue:"default"}),
+      mkFieldSel(l,Object.entries(DECO_SEL),"deco",{emptyValue:"default"}),
+      mkFieldSel(l,Object.entries(STYLE_SEL),"style",{emptyValue:"default"}),
+      mkFieldSel(l,bgFieldOpts(),"bg",{fullRerender:true}),
+      mkFieldSel(l,chFieldOpts(),"ch",{fullRerender:true}),
+      mkFieldSel(l,FX_OPTS,"fx")
+    );
+    const det=document.createElement("details"); det.style.cssText="display:inline-block;";
+    det.onclick=e=>e.stopPropagation();
+    const sum=document.createElement("summary"); sum.className="note"; sum.style.cssText="cursor:pointer;"; sum.textContent="🧍詳細";
+    det.appendChild(sum);
+    const detRow=document.createElement("div"); detRow.style.cssText="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;";
+    detRow.append(
+      mkFieldSel(l,POS_OPTS,"chPos",{emptyValue:"right"}),
+      mkFieldSel(l,SIZE_OPTS,"chSize",{emptyValue:"1"}),
+      mkFieldSel(l,CMO_OPTS,"chMotion",{emptyValue:"sway"})
+    );
+    det.appendChild(detRow);
+    row.appendChild(det);
     row.onclick=()=>{ if(typeof renderMini==="function") renderMini(lineTime(l)); };
     box.appendChild(row);
   });
   if(state.lines.length===0) box.innerHTML='<div class="lrow"><span class="note">①でJSONを読み込んでね</span></div>';
+  updateTicks();
 }
 function applyDefaultToAll(){ pushUndo(); state.lines.forEach(l=>{l.motion="default";l.deco="default";l.style="default";}); renderLineList(); }
 
@@ -1020,7 +1055,6 @@ function importSections(){
   }
   renderLineList();
   renderSectionSummary();
-  renderSecAssign();
   const total=state.lines.filter(l=>!l.gap).length;
   $("sectionSummary").textContent=`✅ ${hit}/${total}行にセクションを割り当てました`+(credits.length?`（クレジット${credits.length}件をイントロ字幕にセット）`:"");
   setTimeout(renderSectionSummary,2500);
@@ -1050,10 +1084,7 @@ function sectionBoundaries(){ // セクションが切り替わる最初の行
   return out;
 }
 function renderSectionFxCards(){ renderLineList(); }
-/* --- 🧩 セクションごとの選択制割り当て --- */
-state.secAssign={}; // {boundaryIndex: {bg:name, ch:name, fx:key}}
-const SEC_FX={"":"エフェクトなし",bubbles:"🫧 しゃぼん玉",sparkle:"✨ キラキラ",sakura:"🌸 桜",flare:"🌟 フレア"};
-function secZones(){ // [前奏]や[間奏]も1ゾーンとして扱う
+function secZones(){ // [前奏]や[間奏]も1ゾーンとして扱う（統合タイムラインの見出し行の単位として引き続き利用）
   const out=[]; let prev=null;
   state.lines.forEach((l,i)=>{
     if(l.gap){ out.push({name:l.text.replace(/[（）()]/g,""), idx:i, gap:true}); prev=null; }
@@ -1063,79 +1094,40 @@ function secZones(){ // [前奏]や[間奏]も1ゾーンとして扱う
   return out;
 }
 let suppressLamp=false;
-function renderZonePreview(cv2,z){ // メインcanvasに描いて縮小コピー
-  const tA=lineTime(state.lines[z.idx]);
-  const zEnd=(z.z<state.lines.length)?lineTime(state.lines[z.z]):tA+6;
-  const mid=Math.min(tA+ (z.gap?1.5:2.2), (tA+zEnd)/2);
-  suppressLamp=true;
-  resetDeco();
-  drawFrame(mid);
-  suppressLamp=false;
-  const c2=cv2.getContext("2d");
-  c2.clearRect(0,0,cv2.width,cv2.height);
-  c2.drawImage(cv,0,0,cv2.width,cv2.height);
-}
-function renderSecAssign(){
-  const box=$("secAssignBox"); if(!box) return;
-  const zs=secZones();
-  updateTicks();
-  if(zs.length===0){ box.innerHTML='<span class="note">①でセクションを読み取る（＋🎼間奏行の追加）と、ゾーンごとの割り当て表が出ます</span>'; return; }
-  box.innerHTML="";
-  zs.forEach((z,i)=>{
-    const c=document.createElement("div"); c.className="card";
-    if(z.gap) c.style.background="#FBF7EC";
-    const pv2=document.createElement("canvas"); pv2.width=128; pv2.height=72;
-    pv2.style.cssText="border-radius:8px;background:#000;flex-shrink:0;cursor:pointer;";
-    pv2.title="クリックで上のミニプレビューに表示";
-    pv2.onclick=()=>renderMini(lineTime(state.lines[z.idx])+1);
-    const nm=document.createElement("span");
-    nm.textContent=`[${z.name}] ${z.a}〜${z.z}行`;
-    nm.style.cssText="min-width:150px;font-weight:700;"+(z.gap?"color:#A08C5B;":"");
-    const asg=state.secAssign[i]||(state.secAssign[i]={bg:"",ch:"",fx:"",pos:"right",size:"1",cmo:"sway"});
-    const mkSel=(opts,key)=>{
-      const sel=document.createElement("select");
-      for(const [v,lab] of opts){ const o=document.createElement("option"); o.value=v; o.textContent=lab; sel.appendChild(o); }
-      sel.value=asg[key]||"";
-      sel.onchange=()=>{ pushUndo(); asg[key]=sel.value; applySecAssign(); renderZonePreview(pv2,z); };
-      return sel;
-    };
-    c.append(pv2,nm,
-      mkSel([["","背景そのまま"],["none","背景なし(グラデ)"],...state.bgs.map(bg=>[bg.name,"🖼 "+bg.name])],"bg"),
-      mkSel([["","キャラそのまま"],["none","キャラなし"],...state.chars.map(ch=>[ch.name,"🧍 "+ch.name])],"ch"),
-      mkSel([["right","右"],["left","左"],["center","中央"]],"pos"),
-      mkSel([["1","中"],["0.7","小"],["1.4","大"]],"size"),
-      mkSel([["sway","ふわふわ"],["bounce","跳ねる"],["still","静止"]],"cmo"),
-      mkSel(Object.entries(SEC_FX),"fx"));
-    box.appendChild(c);
-    renderZonePreview(pv2,z);
-  });
-}
-function applySecAssign(){ // 「そのまま」は前ゾーンを引き継ぎ／zoneCharsで位置・大きさ・動きもゾーン単位に
-  const zs=secZones();
-  state.bgs.forEach(b=>b.ranges="");
-  // ★キャラは state.zoneChars が優先され ch.ranges は描画に使われないため、直接指定欄のデータを消さないよう保持する（バグ修正）
-  state.zoneChars=[];
-  const fxRanges={bubbles:[],sparkle:[],sakura:[],flare:[]};
-  let curBg=null, curCh=null;
-  zs.forEach((z,i)=>{
-    const asg=state.secAssign[i]||{};
-    // 背景：そのまま("")＝引き継ぎ
-    if(asg.bg==="none") curBg=null;
-    else if(asg.bg) curBg=asg.bg;
-    if(curBg){ const bg=state.bgs.find(x=>x.name===curBg);
-      if(bg) bg.ranges=bg.ranges?bg.ranges+", "+z.a+"-"+z.z:z.a+"-"+z.z; }
-    // キャラ：そのまま＝引き継ぎ（位置などの変更だけ上書き可）
-    if(asg.ch==="none") curCh=null;
-    else if(asg.ch) curCh={name:asg.ch};
-    if(curCh) state.zoneChars.push({a:z.a,z:z.z,name:curCh.name,
-      pos:asg.pos||"right",size:asg.size||"1",cmo:asg.cmo||"sway"});
-    if(asg.fx&&fxRanges[asg.fx]) fxRanges[asg.fx].push(z.a+"-"+z.z);
-  });
-  state.fx.bubbles=fxRanges.bubbles.join(", ");
-  state.fx.sparkle=fxRanges.sparkle.join(", ");
-  state.fx.sakura=fxRanges.sakura.join(", ");
-  state.fx.flare=fxRanges.flare.join(", ");
-  renderBgDirect(); renderCharDirect();
+/* 旧・素材タイムライン（secAssignゾーン表）／さらに古い直接レンジ指定（chars[].ranges等）から、
+   統合タイムライン（行ごとのbg/ch/fx）へ変換する。v11〜旧v12プロジェクトJSONの互換性を保つための一回きりの移行処理。 */
+function migrateLegacyToLines(s){
+  if(!s) return;
+  if(s.secAssign && Object.keys(s.secAssign).length){
+    const zs=secZones();
+    zs.forEach((z,i)=>{
+      const asg=s.secAssign[i]; if(!asg) return;
+      const first=state.lines[z.idx]; if(!first) return;
+      if(asg.bg==="none") first.bg="none";
+      else if(asg.bg) first.bg=asg.bg;
+      if(asg.ch==="none") first.ch="none";
+      else if(asg.ch){ first.ch=asg.ch; first.chPos=asg.pos||"right"; first.chSize=asg.size||"1"; first.chMotion=asg.cmo||"sway"; }
+      first.fx=asg.fx||"none"; // 旧ゾーンfxは引き継がない仕様だったため明示的にnoneで終端
+    });
+    return;
+  }
+  const baseBg=(Array.isArray(s.bgs)?s.bgs:[]).find(b=>!String(b.ranges||"").trim());
+  if(baseBg && state.lines[0] && !state.lines[0].bg) state.lines[0].bg=baseBg.name;
+  const applyRanged=(list,key,extra)=>{
+    (list||[]).forEach(item=>{
+      const r=parseRanges(item.ranges);
+      if(r==="all"){ if(state.lines[0]){ state.lines[0][key]=item.name; if(extra) Object.assign(state.lines[0],extra(item)); } return; }
+      if(!Array.isArray(r)||r.length===0) return;
+      r.forEach(([a,b])=>{
+        const s0=state.lines[a-1]; if(!s0) return;
+        s0[key]=item.name; if(extra) Object.assign(s0,extra(item));
+        const after=state.lines[b];
+        if(after && (after[key]===undefined||after[key]==="")) after[key]="none";
+      });
+    });
+  };
+  applyRanged(s.bgs,"bg");
+  applyRanged(s.chars,"ch",item=>({chPos:item.pos||"right",chSize:String(item.size||"1"),chMotion:item.cmotion||"sway"}));
 }
 function updateTicks(){ // シークバーのセクション目盛り
   const dl=$("seekTicks"); if(!dl) return;
@@ -1295,74 +1287,6 @@ function drawSectionFx(t){
   }
 }
 
-function renderCharDirect(){
-  const box=$("charDirect"); box.innerHTML="";
-  if(state.chars.length===0){ box.innerHTML='<span class="note">①でキャラ画像を追加してね</span>'; return; }
-  const zoneActive=!!(state.zoneChars&&state.zoneChars.length); // 素材タイムラインが使われている＝おまかせMV／ゾーン表操作後
-  if(zoneActive){
-    const info=document.createElement("div"); info.className="note";
-    info.style.cssText="margin-bottom:6px;";
-    info.textContent="🎬 素材タイムラインでキャラが割り当てられています。下の数字は自動計算された結果です（グレー＝直接編集不可）。編集したい場合は上のゾーン表を「キャラなし」に戻してください。";
-    box.appendChild(info);
-  }
-  state.chars.forEach(ch=>{
-    const c=document.createElement("div"); c.className="card";
-    const im=document.createElement("img"); im.className="thumb char";
-    im.src=(ch.keyMode!=="none"&&ch.imgKeyed)?ch.imgKeyed.toDataURL():ch.imgRaw.src;
-    const nm=document.createElement("span"); nm.textContent=ch.name; nm.style.minWidth="110px";
-    const rng=document.createElement("input"); rng.type="text"; rng.placeholder="例: 9-12, 21-24 / all";
-    rng.style.width="170px";
-    if(zoneActive){
-      const zr=state.zoneChars.filter(z=>z.name===ch.name).map(z=>z.a===z.z?String(z.a):z.a+"-"+z.z).join(", ");
-      rng.value=zr||"（このキャラは未登場）";
-      rng.disabled=true; rng.style.opacity=".65"; rng.style.background="#F1F5F8";
-      rng.title="素材タイムラインによる自動計算値（直接編集するにはゾーン表を「キャラなし」に戻してください）";
-    }else{
-      rng.value=ch.ranges;
-      rng.addEventListener("focus",()=>pushUndo(),{once:true});
-      rng.oninput=()=>{ ch.ranges=rng.value; };
-    }
-    const pos=document.createElement("select");
-    [["left","左"],["center","中央"],["right","右"]].forEach(([v,lab])=>{
-      const o=document.createElement("option"); o.value=v; o.textContent=lab; pos.appendChild(o);
-    });
-    const sz=document.createElement("select");
-    [["0.7","小"],["1","中"],["1.4","大"]].forEach(([v,lab])=>{
-      const o=document.createElement("option"); o.value=v; o.textContent=lab; sz.appendChild(o);
-    });
-    const mo=document.createElement("select");
-    [["bounce","跳ねる"],["sway","ふわふわ"],["still","静止"]].forEach(([v,lab])=>{
-      const o=document.createElement("option"); o.value=v; o.textContent=lab; mo.appendChild(o);
-    });
-    if(zoneActive){
-      // ゾーンごとの値が異なる可能性があるため、実際に使われている値を（複数あれば代表1件を）表示するだけにする
-      const zcs=state.zoneChars.filter(z=>z.name===ch.name);
-      pos.value=zcs[0]?.pos||ch.pos; sz.value=String(zcs[0]?.size||ch.size); mo.value=zcs[0]?.cmo||ch.cmotion||"sway";
-      [pos,sz,mo].forEach(el=>{ el.disabled=true; el.style.opacity=".65"; el.title="素材タイムラインのゾーン表で設定します（ここでは編集できません）"; });
-    }else{
-      pos.value=ch.pos; pos.onchange=()=>{ pushUndo(); ch.pos=pos.value; };
-      sz.value=String(ch.size); sz.onchange=()=>{ pushUndo(); ch.size=parseFloat(sz.value); };
-      mo.value=ch.cmotion||"sway"; mo.onchange=()=>{ pushUndo(); ch.cmotion=mo.value; };
-    }
-    c.append(im,nm,rng,pos,sz,mo); box.appendChild(c);
-  });
-}
-function renderBgDirect(){
-  const box=$("bgDirect"); box.innerHTML="";
-  if(state.bgs.length===0){ box.innerHTML='<span class="note">背景未登録（ラムネ色グラデ）</span>'; return; }
-  state.bgs.forEach(b=>{
-    const c=document.createElement("div"); c.className="card";
-    const im=document.createElement("img"); im.className="thumb"; im.src=b.img.src;
-    const nm=document.createElement("span"); nm.textContent=b.name; nm.style.minWidth="110px";
-    const inp=document.createElement("input"); inp.type="text"; inp.placeholder="例: 1-8, 21-24（空欄=ベース背景）"; inp.style.width="210px";
-    inp.value=b.ranges||"";
-    inp.addEventListener("focus",()=>pushUndo(),{once:true});
-    inp.oninput=()=>{ b.ranges=inp.value; };
-    const lab=document.createElement("span"); lab.className="note"; lab.textContent="行で表示（何度でもOK）";
-    c.append(im,nm,inp,lab); box.appendChild(c);
-  });
-}
-
 /* 🤖 BPM自動判定（機械学習なし・オンセット自己相関） */
 async function autoBPM(){
   if(!audioBlob){ alert("①でMP3を読み込んでね"); return; }
@@ -1512,12 +1436,10 @@ function gatherSettings(){
     lyricOffset:+$("lyricOffset").value||0, maxHold:+$("maxHold").value||6,
     lyricStyle:$("lyricStyle").value, defaultMotion:$("defaultMotion").value, fontSelect:$("fontSelect").value,
     charPace:$("charPace").value, lyricDeco:$("lyricDeco").value,
-    bgTransition:$("bgTransition").value,
-    fx:{...state.fx, always:$("fxAlways").value},
+    fx:{always:$("fxAlways").value}, // 個別の背景・キャラ・エフェクトは行タイムライン(state.lines[].bg/ch/fx)側が正
     easeDefault:{...state.easeDefault}, easeApply:!!state.easeApply,
-    secAssign:state.secAssign,
-    bgs:state.bgs.map(b=>({name:b.name,ranges:b.ranges||""})),
-    chars:state.chars.map(c=>({name:c.name,ranges:c.ranges,pos:c.pos,size:c.size,keyMode:c.keyMode,keyStrength:c.keyStrength,cmotion:c.cmotion})),
+    bgs:state.bgs.map(b=>({name:b.name})),
+    chars:state.chars.map(c=>({name:c.name,keyMode:c.keyMode,keyStrength:c.keyStrength})),
   };
 }
 function applySettings(s){
@@ -1532,28 +1454,22 @@ function applySettings(s){
     else state.pendingFontSelect=s.fontSelect; // フォント復元後に適用
   }
   if(s.defaultMotion)$("defaultMotion").value=s.defaultMotion;
-  if(s.bgTransition)$("bgTransition").value=s.bgTransition;
   if(s.charPace)$("charPace").value=s.charPace;
   if(s.lyricDeco)$("lyricDeco").value=s.lyricDeco;
-  if(s.fx){ // v11のJSONも同じ形（bubbles/sparkle/pop/flare/sakura/always）なのでそのまま読める
-    Object.assign(state.fx,{bubbles:s.fx.bubbles||"",sparkle:s.fx.sparkle||"",pop:s.fx.pop||"",
-      flare:s.fx.flare||"",sakura:s.fx.sakura||""});
-    if(s.fx.always!==undefined){ state.fx.always=s.fx.always; $("fxAlways").value=s.fx.always; }
-  }
+  if(s.fx && s.fx.always!==undefined){ state.fx.always=s.fx.always; $("fxAlways").value=s.fx.always; }
   if(s.easeDefault) Object.assign(state.easeDefault,s.easeDefault); // v12のみ（無ければ既定値のまま）
   if(typeof s.easeApply==="boolean") state.easeApply=s.easeApply;
-  if(s.secAssign) state.secAssign=s.secAssign;
-  if(Array.isArray(s.bgs)) s.bgs.forEach(sb=>{
-    const b=state.bgs.find(x=>x.name===sb.name);
-    if(b) b.ranges=sb.ranges??(sb.fromLine!=null?sb.fromLine+"-999":"");
-  });
+  migrateLegacyToLines(s); // ★旧・素材タイムライン(secAssign)／さらに古い直接レンジ指定を行タイムラインへ変換
   if(Array.isArray(s.chars)) s.chars.forEach(sc=>{
     const c=state.chars.find(x=>x.name===sc.name);
-    if(c){ Object.assign(c,{ranges:sc.ranges,pos:sc.pos,size:sc.size,keyStrength:sc.keyStrength??1,cmotion:sc.cmotion||c.cmotion||"sway"});
-      if(sc.keyMode!==undefined){ c.keyMode=sc.keyMode; c.imgKeyed=(c.keyMode==="none")?null:chromaKey(c.imgRaw,c.keyStrength,c.keyMode); } }
+    if(c && sc.keyMode!==undefined){
+      c.keyMode=sc.keyMode; c.keyStrength=sc.keyStrength??1;
+      c.imgKeyed=(c.keyMode==="none")?null:chromaKey(c.imgRaw,c.keyStrength,c.keyMode);
+    }
   });
-  renderBgDirect(); renderCharDirect(); renderCharList();
+  renderCharList();
   if($("easeFamily")&&$("easeFamily").options.length){ $("easeFamily").value=state.easeDefault.family; $("easeDir").value=state.easeDefault.dir; $("easeApplyChk").checked=!!state.easeApply; renderEaseParams(); drawEaseGraph(); updateEasePanelVisibility(); }
+  renderLineList();
 }
 
 /* ================= Undo / Redo（P0-3：演出編集の取り消し） ================= */
@@ -1562,9 +1478,7 @@ let _undoSuppress=false;
 function snapshotEditable(){
   return JSON.stringify({
     lines:state.lines.map(l=>({...l})),
-    secAssign:state.secAssign, zoneChars:state.zoneChars||[],
-    bgs:state.bgs.map(b=>({name:b.name,ranges:b.ranges||""})),
-    chars:state.chars.map(c=>({name:c.name,ranges:c.ranges,pos:c.pos,size:c.size,cmotion:c.cmotion,keyMode:c.keyMode,keyStrength:c.keyStrength})),
+    chars:state.chars.map(c=>({name:c.name,keyMode:c.keyMode,keyStrength:c.keyStrength})),
     settings:gatherSettings(),
   });
 }
@@ -1578,16 +1492,13 @@ function restoreEditable(json){
   const d=JSON.parse(json);
   _undoSuppress=true;
   state.lines=d.lines;
-  state.secAssign=d.secAssign||{};
-  state.zoneChars=d.zoneChars||[];
-  if(Array.isArray(d.bgs)) d.bgs.forEach(sb=>{ const b=state.bgs.find(x=>x.name===sb.name); if(b) b.ranges=sb.ranges||""; });
   if(Array.isArray(d.chars)) d.chars.forEach(sc=>{
     const c=state.chars.find(x=>x.name===sc.name);
-    if(c){ Object.assign(c,{ranges:sc.ranges,pos:sc.pos,size:sc.size,cmotion:sc.cmotion,keyStrength:sc.keyStrength??1});
-      if(sc.keyMode!==undefined){ c.keyMode=sc.keyMode; c.imgKeyed=(c.keyMode==="none")?null:chromaKey(c.imgRaw,c.keyStrength,c.keyMode); } }
+    if(c && sc.keyMode!==undefined){ c.keyMode=sc.keyMode; c.keyStrength=sc.keyStrength??1;
+      c.imgKeyed=(c.keyMode==="none")?null:chromaKey(c.imgRaw,c.keyStrength,c.keyMode); }
   });
   applySettings(d.settings);
-  renderLineList(); renderCharDirect(); renderBgDirect(); renderSecAssign(); renderCharList();
+  renderLineList(); renderCharList();
   drawFrame(effT());
   _undoSuppress=false;
 }
@@ -1655,15 +1566,35 @@ const SAFE_TOP=0.06; // YouTube安全圏の天井
 /* --- 背景＆トランジション --- */
 const pvBubbles=Array.from({length:16},()=>({x:Math.random(),y:Math.random(),r:6+Math.random()*22,v:12+Math.random()*30,ph:Math.random()*6.28}));
 let curBgKey=null, prevBgKey=null, transStart=-99;
-function pickBg(lineIdx){
-  const n=lineIdx+1;
-  let bg=null;
-  for(const b of state.bgs){ // 行レンジが合う最後のものを採用
-    const r=parseRanges(b.ranges);
-    if(r==="all"||inRanges(r,n)) bg=b;
+/* --- 統合タイムラインの解決（P0-4的な軽量キャッシュ不要：後方に歩いて最初に見つかった値を採用） --- */
+function resolveLineField(lineIdx,key){
+  for(let i=Math.min(lineIdx,state.lines.length-1);i>=0;i--){
+    const v=state.lines[i]&&state.lines[i][key];
+    if(v!==undefined&&v!=="") return v;
   }
-  if(!bg) bg=state.bgs.find(b=>!String(b.ranges||"").trim())||state.bgs[0]||null;
-  return bg;
+  return "";
+}
+function resolveCharAt(lineIdx){
+  let chSetIdx=-1, chVal="";
+  for(let i=Math.min(lineIdx,state.lines.length-1);i>=0;i--){
+    const l=state.lines[i];
+    if(l && l.ch!==undefined && l.ch!==""){ chSetIdx=i; chVal=l.ch; break; }
+  }
+  if(chSetIdx<0||chVal==="none") return null;
+  let pos="",size="",cmo="";
+  for(let i=lineIdx;i>=chSetIdx;i--){
+    const l=state.lines[i]; if(!l) continue;
+    if(!pos&&l.chPos) pos=l.chPos;
+    if(!size&&l.chSize) size=l.chSize;
+    if(!cmo&&l.chMotion) cmo=l.chMotion;
+  }
+  return {name:chVal, pos:pos||"right", size:size||"1", cmo:cmo||"sway", chSetIdx};
+}
+function pickBg(lineIdx){
+  const name=resolveLineField(lineIdx,"bg");
+  if(name && name!=="none") return state.bgs.find(b=>b.name===name)||null;
+  if(!name && state.bgs.length) return state.bgs[0]; // 何も設定していなければ最初の1枚を自動採用（初心者向けの挙動）
+  return null;
 }
 function drawBgImage(bg,t){
   if(bg){
@@ -1804,28 +1735,12 @@ function drawBubbleSet(set,t,alphaMul){
 
 /* --- キャラ --- */
 function visibleChars(t,lineIdx){
-  const lineNo=lineIdx+1;
-  const out=[];
-  if(state.zoneChars&&state.zoneChars.length){ // 素材タイムラインが優先
-    state.zoneChars.forEach((zc,zi)=>{
-      if(lineNo<zc.a||lineNo>zc.z) return;
-      const ch=state.chars.find(c=>c.name===zc.name); if(!ch) return;
-      const startTime=state.lines[zc.a-1]?lineTime(state.lines[zc.a-1]):t;
-      out.push({ch,ci:zi,startTime,ovr:zc});
-    });
-    return out;
-  }
-  state.chars.forEach((ch,ci)=>{
-    const r=parseRanges(ch.ranges);
-    if(r!=="all" && (r.length===0||!inRanges(r,lineNo))) return;
-    let startTime=0;
-    if(r!=="all"){
-      const seg=r.find(([a,b])=>lineNo>=a&&lineNo<=b);
-      startTime=state.lines[Math.max(0,seg[0]-1)]?lineTime(state.lines[seg[0]-1]):t;
-    }
-    out.push({ch,ci,startTime});
-  });
-  return out;
+  if(lineIdx<0) return [];
+  const r=resolveCharAt(lineIdx);
+  if(!r) return [];
+  const ch=state.chars.find(c=>c.name===r.name); if(!ch) return [];
+  const startTime=state.lines[r.chSetIdx]?lineTime(state.lines[r.chSetIdx]):t;
+  return [{ch,ci:0,startTime,ovr:{pos:r.pos,size:r.size,cmo:r.cmo}}];
 }
 let charRects=[]; // このフレームでキャラが実際に占めた矩形（字幕よけ用）
 function drawChars(t,lineIdx){
@@ -1837,9 +1752,9 @@ function drawChars(t,lineIdx){
     const appear=1+0.4*(1-p)*Math.sin(p*Math.PI);
     const alpha=Math.min(1,p*2);
     const img=charImg(ch);
-    const hRatio=SIZE_H[ovr?String(ovr.size):String(ch.size)]??0.85;
+    const hRatio=SIZE_H[String(ovr.size)]??0.85;
     const h=CH*hRatio, s=h/img.height, w=img.width*s;
-    const cpos=ovr?ovr.pos:ch.pos;
+    const cpos=ovr.pos;
     let x;
     if(cpos==="left") x=CW*0.18-w/2;
     else if(cpos==="center") x=CW*0.5-w/2;
@@ -1853,7 +1768,7 @@ function drawChars(t,lineIdx){
     if(h>CH*0.92) y=CH*SAFE_TOP;
     else y=CH*0.97-h;
     // ★動き：跳ねる（ビート着地）／ふわふわ／静止
-    const cm=ovr?ovr.cmo:(ch.cmotion||"sway");
+    const cm=ovr.cmo;
     let yBob=0, squash=1;
     if(cm==="bounce"){ // なめらか＆やさしいぴょんぴょん
       yBob=-bounce*CH*0.016;
@@ -1987,7 +1902,7 @@ function arcLayout(text,t,lineIdx){
   const vis=visibleChars(t,lineIdx);
   let cx=CW*0.5, cy=CH*0.75;
   if(vis.length>0){
-    const pos=vis[0].ch.pos;
+    const pos=vis[0].ovr?vis[0].ovr.pos:"right";
     cx=pos==="left"?CW*0.18:pos==="center"?CW*0.5:CW*0.82;
     cy=CH*0.75;
   }
@@ -2289,10 +2204,11 @@ const sparkleSet=Array.from({length:22},()=>({x:Math.random(),y:Math.random(),ph
 let popFx=[]; let lastPopLine=-1;
 const sakuraSet=Array.from({length:18},()=>({x:Math.random(),y:Math.random(),sz:0.6+Math.random()*0.8,vx:0.02+Math.random()*0.04,vy:0.05+Math.random()*0.05,ph:Math.random()*6.28,rot:Math.random()*6.28,vr:(Math.random()-0.5)*2}));
 function drawFx(t,lineIdx,dt){
-  const lineNo=lineIdx+1;
   const FA=state.fx.always;
-  if(FA==="bubbles"||inRanges(parseRanges(state.fx.bubbles),lineNo)) drawBubbleSet(fxBubbleSet,t,0.75);
-  if(FA==="sakura"||inRanges(parseRanges(state.fx.sakura),lineNo)){
+  const lineFx=lineIdx>=0?resolveLineField(lineIdx,"fx"):"";
+  const active=k=>FA===k||lineFx===k;
+  if(active("bubbles")) drawBubbleSet(fxBubbleSet,t,0.75);
+  if(active("sakura")){
     for(const s of sakuraSet){
       const x=((s.x+t*s.vx)%1.2)*CW*1.2-CW*0.1+Math.sin(t*0.9+s.ph)*CW*0.02;
       const y=((s.y+t*s.vy)%1.2)*CH*1.2-CH*0.1;
@@ -2312,7 +2228,7 @@ function drawFx(t,lineIdx,dt){
     }
     ctx.globalAlpha=1;
   }
-  if(FA==="flare"||inRanges(parseRanges(state.fx.flare),lineNo)){
+  if(active("flare")){
     // ゆっくり漂う光のフレア2つ＋斜めの光筋
     for(let i=0;i<2;i++){
       const x=CW*(0.3+0.4*i)+Math.sin(t*0.3+i*2.5)*CW*0.18;
@@ -2337,7 +2253,7 @@ function drawFx(t,lineIdx,dt){
     ctx.fillRect(-CW,-CH,CW*2,CH*2);
     ctx.restore();
   }
-  if(FA==="sparkle"||inRanges(parseRanges(state.fx.sparkle),lineNo)){
+  if(active("sparkle")){
     for(const s of sparkleSet){
       const tw=(Math.sin(t*3+s.ph)+1)/2;
       const x=s.x*CW, y=s.y*CH, r=s.sz*(CH/720)*10*tw;
@@ -2349,8 +2265,8 @@ function drawFx(t,lineIdx,dt){
     }
     ctx.globalAlpha=1;
   }
-  // 丸ぽんっ：指定行に入った瞬間に発火
-  if(lineIdx>=0 && inRanges(parseRanges(state.fx.pop),lineNo) && lastPopLine!==lineIdx){
+  // 丸ぽんっ：l.pop===trueの行に入った瞬間に発火（引継なしの単発デコ）
+  if(lineIdx>=0 && state.lines[lineIdx] && state.lines[lineIdx].pop && lastPopLine!==lineIdx){
     lastPopLine=lineIdx;
     for(let i=0;i<10;i++){
       popFx.push({x:Math.random()*CW,y:CH*0.3+Math.random()*CH*0.5,
@@ -2448,57 +2364,37 @@ async function omakaseMV(){
   $("charPace").value="phrase";
   $("lyricStyle").value="auto";
   $("lyricDeco").value="random";
-  $("bgTransition").value="cut"; // 背景切替はセクション演出に任せてカットでOK
 
   const bs=sectionBoundaries();
   const FLASHY=["rings","stripes","diamonds","cloud","checker","diag","bubbleup"];
-  if(bs.length>0){
-    // ★セクション境目に派手な切替演出をランダム割り振り（同じものが何度出てもOK）
-    bs.forEach((b,i)=>{ if(i>0) b.line.trans=FLASHY[Math.floor(hash01(i*17+3)*FLASHY.length)]; });
-    // ★素材タイムライン（ゾーン表）に直接おまかせ割り振り
-    const zs=secZones();
-    let bgi=0, chi=0;
-    zs.forEach((z,i)=>{
-      const isChorus=/chorus|サビ/i.test(z.name)&&!/pre/i.test(z.name);
-      const asg=state.secAssign[i]={bg:"",ch:"",fx:"",pos:"right",size:"1",cmo:"sway"};
-      if(state.bgs.length) asg.bg=state.bgs[(bgi++)%state.bgs.length].name;
-      if(z.gap){ asg.ch="none"; asg.fx="bubbles"; }
-      else{
-        if(state.chars.length){
-          asg.ch=state.chars[chi%state.chars.length].name;
-          asg.pos=["right","left","center"][chi%3];
-          asg.size=isChorus?"1.4":"1";
-          asg.cmo=isChorus?"bounce":"sway";
-          chi++;
-        }
-        asg.fx=isChorus?"sparkle":"";
-      }
-    });
-    applySecAssign();
-    renderSecAssign(); renderBgDirect(); renderCharDirect(); renderLineList();
-  }
+  bs.forEach((b,i)=>{ if(i>0) b.line.trans=FLASHY[Math.floor(hash01(i*17+3)*FLASHY.length)]; }); // セクション境目に派手な切替演出
 
-  // サビっぽい行にキラキラ、セクション頭に丸ぽんっ
-  const chorus=[], heads=[];
-  state.lines.forEach((l,i)=>{
-    if(l.gap) return;
-    const sec=(l.section||"").toLowerCase();
-    if((/chorus|サビ/.test(sec)&&!/pre/.test(sec))||/[♪⭐⭐︎☆★]/.test(l.text)||/bubble/i.test(l.text)) chorus.push(i+1);
-    if(i===0||state.lines[i-1].gap) heads.push(i+1);
-  });
-  const toRanges=arr=>{
-    if(arr.length===0) return "";
-    const out=[]; let s=arr[0], p=arr[0];
-    for(let i=1;i<=arr.length;i++){
-      if(arr[i]===p+1){ p=arr[i]; continue; }
-      out.push(s===p?String(s):s+"-"+p);
-      s=p=arr[i];
+  // ★統合タイムラインに直接おまかせ割り振り（各ゾーンの先頭行にbg/ch/fxをセット＝以降へ引き継がれる）
+  const zs=secZones();
+  let bgi=0, chi=0;
+  zs.forEach((z,i)=>{
+    const first=state.lines[z.idx]; if(!first) return;
+    const isChorus=/chorus|サビ/i.test(z.name)&&!/pre/i.test(z.name);
+    if(state.bgs.length) first.bg=state.bgs[(bgi++)%state.bgs.length].name;
+    if(z.gap){ first.ch="none"; first.fx="bubbles"; }
+    else{
+      if(state.chars.length){
+        first.ch=state.chars[chi%state.chars.length].name;
+        first.chPos=["right","left","center"][chi%3];
+        first.chSize=isChorus?"1.4":"1";
+        first.chMotion=isChorus?"bounce":"sway";
+        chi++;
+      }
+      first.fx=isChorus?"sparkle":"none";
     }
-    return out.join(", ");
-  };
-  state.fx.sparkle=toRanges(chorus);
-  state.fx.pop=heads.join(", ");
-  state.fx.bubbles="all";
+  });
+  // セクション頭（前奏・間奏の直後の行）に丸ぽんっ
+  state.lines.forEach((l,i)=>{
+    if(l.gap){ l.pop=false; return; }
+    l.pop=(i===0)||state.lines[i-1].gap;
+  });
+  state.fx.always="bubbles"; // 曲全体にうっすらしゃぼん玉（旧・fxBubbles="all"相当）
+  $("fxAlways").value="bubbles";
   renderLineList();
   alert("🪄 おまかせ設定をセットしました！\n・セクション境目に切替演出ランダム\n・背景＆キャラをセクション単位でローテーション（サビは2体＆跳ねる）\n・モーション/デコ/エフェクトも自動\nあとは②で好きに上書きしてね");
 }
