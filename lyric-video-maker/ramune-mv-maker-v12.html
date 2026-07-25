@@ -109,6 +109,10 @@
       <span class="note" id="fontName">追加したフォントは🔤付きでメニューに増え、このブラウザに保存されて次回も使えます</span>
     </div>
     <h3>📖 セクション読み取り（[Verse 1]付きの歌詞テキスト・.txtのD&DもOK）</h3>
+    <div class="row">
+      <label class="filebtn" style="background:#E4F3FC;color:var(--soda-deep);">📄 歌詞txtを選ぶ<input type="file" id="lyricTxtFile" accept=".txt,text/plain"></label>
+      <span class="note">貼り付け・D&Dの代わりにファイル選択でも読み込めます</span>
+    </div>
     <textarea id="sectionText" style="min-height:100px;" placeholder="[Verse 1]&#10;ずっと しまってた 小さな宝物&#10;…（元の歌詞をぜんぶ貼り付け or .txtをドロップ）"></textarea>
     <div class="row">
       <button class="btn ghost" onclick="importSections()">セクションを読み取る</button>
@@ -177,7 +181,7 @@
       <button class="btn ghost" id="bpmPlayBtn">▶</button><span class="timecode" id="bpmTimecode">0:00.00</span>
     </div>
     <div class="row">
-      <label>BPM <input type="number" id="bpm" value="128" min="40" max="240" style="width:80px;"></label>
+      <label>BPM <input type="number" id="bpm" value="128" min="40" max="250" style="width:80px;"></label>
       <button class="btn ghost" id="bpmAutoBtn" onclick="autoBPM()">🤖 BPM自動判定</button>
       <button class="btn ghost" id="bpmTapBtn" onclick="bpmTap()">👆 タップで測る</button>
       <label>1拍目の時刻 <input type="number" id="beatOffset" value="0" step="0.01" style="width:90px;"> 秒</label>
@@ -674,6 +678,18 @@ function addCharFiles(files,skipSave){
   });
 }
 
+function loadLyricTxt(f){
+  const r=new FileReader();
+  r.onload=()=>{ $("sectionText").value=r.result;
+    if(state.lines.length){ importSections(); }
+    else alert("歌詞txtを受け取りました。タイミングJSONを読み込むと自動でセクション判定します"); };
+  r.readAsText(f);
+}
+$("lyricTxtFile").addEventListener("change",e=>{
+  const f=e.target.files[0]; if(f) loadLyricTxt(f);
+  e.target.value="";
+});
+
 /* --- ドラッグ＆ドロップ --- */
 function setupDrop(el,handler){
   el.addEventListener("dragover",e=>{ e.preventDefault(); e.stopPropagation(); el.classList.add("drag"); });
@@ -694,11 +710,7 @@ setupDrop($("pane0"),files=>{ // 曲・JSON・フォントはパネルのどこ�
       r.onload=()=>{ try{ loadTiming(JSON.parse(r.result)); $("jsonName").textContent=f.name; }catch(err){ alert("JSON読込エラー: "+err.message); } };
       r.readAsText(f);
     }else if(/\.txt$/i.test(f.name)){
-      const r=new FileReader();
-      r.onload=()=>{ $("sectionText").value=r.result;
-        if(state.lines.length){ importSections(); }
-        else alert("歌詞txtを受け取りました。タイミングJSONを読み込むと自動でセクション判定します"); };
-      r.readAsText(f);
+      loadLyricTxt(f);
     }else if(/\.(ttf|otf|woff2?)$/i.test(f.name)){
       addFontFiles([f]);
     }
@@ -1374,10 +1386,10 @@ async function autoBPM(){
     for(let i=1;i<frames;i++) onset[i]=Math.max(0,env[i]-env[i-1]);
     const mean=onset.reduce((a,b)=>a+b,0)/frames;
     for(let i=0;i<frames;i++) onset[i]-=mean;
-    // 自己相関でBPM 70〜200を探索
+    // 自己相関でBPM 70〜250を探索
     const frameT=hop/sr;
     let bestBpm=128, bestScore=-Infinity;
-    for(let bpm=70;bpm<=200;bpm+=0.5){
+    for(let bpm=70;bpm<=250;bpm+=0.5){
       const lag=Math.round(60/bpm/frameT);
       if(lag<2||lag*2>=frames) continue;
       let sc=0;
