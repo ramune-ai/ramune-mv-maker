@@ -51,7 +51,8 @@
   .lrow{display:flex; align-items:center; gap:8px; padding:5px 10px; border-bottom:1px solid #EFF8FE; font-size:.85rem;}
   .lrow:nth-child(odd){background:#FBFEFF;}
   .lrow .no{width:30px; color:#9FBCCB; flex-shrink:0; text-align:right;}
-  .lrow .t{width:76px; font-variant-numeric:tabular-nums; color:var(--soda-deep); font-weight:700; flex-shrink:0;}
+  .lrow .t{width:76px; font-variant-numeric:tabular-nums; color:var(--soda-deep); font-weight:700; flex-shrink:0; cursor:pointer; border-radius:6px;}
+  .lrow .t:hover{background:#DFF2FE; text-decoration:underline;}
   .lrow .txt{flex:1 1 220px; min-width:160px; white-space:normal; word-break:break-word;}
   .lrow select{font-size:.8rem; padding:1px 4px;}
   .lrow-acc{border-bottom:1px solid #EFF8FE;}
@@ -882,7 +883,8 @@ function renderLineList(){
     const t=document.createElement("span"); t.className="t"; t.textContent=fmt(l.time);
     const txt=document.createElement("span"); txt.className="txt"; txt.textContent=l.text;
     sum.append(no,t,txt);
-    sum.onclick=()=>{ if(typeof renderMini==="function") renderMini(lineTime(l)); };
+    t.title="クリックで仮合成プレビューへ";
+    t.onclick=e=>{ e.preventDefault(); e.stopPropagation(); if(typeof renderMini==="function") renderMini(lineTime(l)); };
     row.appendChild(sum);
 
     const mkExHead=(label,cls)=>{ const h=document.createElement("div"); h.className="exhead "+cls; h.textContent=label; return h; };
