@@ -330,6 +330,14 @@
       <span class="note" id="fxBlendStatus">今：OFF（従来通りの半透明シール状）</span>
       <span class="note">対象：🫧しゃぼん玉・✨キラキラ・🌟フレア・文字弾けの飛び散り・丸ぽんっ</span>
     </div>
+    <div class="row">
+      <label><input type="checkbox" id="stickerChk" style="width:auto;"> 🎀 デコステッカー（手描き風の音符・ハート等）</label>
+      <label style="flex:0 0 auto;">量
+        <input type="range" id="stickerAmt" min="0.4" max="2" step="0.1" value="1" style="width:120px; vertical-align:middle;">
+      </label>
+      <span class="note" id="stickerStatus"></span>
+      <span class="note">セクションの盛り上がりに応じて自動で増減します（イントロは控えめ／サビは賑やか／落ちサビは静か）</span>
+    </div>
     <div id="lineList"></div>
 
     <div class="row" style="margin-top:14px;">
@@ -885,6 +893,7 @@ function renderRowPreview(cv2,z){ // メインcanvasに描いて縮小コピー�
   c2.drawImage(cv,0,0,cv2.width,cv2.height);
 }
 function renderLineList(){
+  invalidateEnergyCache(); // 行やセクションが変わったら熱量キャッシュを捨てる（デコの量が追従する）
   const box=$("lineList"); box.innerHTML="";
   const zones=secZones(); let zi=0;
   let prevSec=null;
@@ -1582,6 +1591,7 @@ function gatherSettings(){
     fx:{always:$("fxAlways").value}, // 個別の背景・キャラ・エフェクトは行タイムライン(state.lines[].bg/ch/fx)側が正
     easeDefault:{...state.easeDefault}, easeApply:!!state.easeApply,
     textStyle:{...state.textStyle}, currentTheme:state.currentTheme, fxBlend:!!state.fxBlend,
+    stickerOn:!!state.stickerOn, stickerAmt:+state.stickerAmt||1,
     bgs:state.bgs.map(b=>({name:b.name})),
     chars:state.chars.map(c=>({name:c.name,keyMode:c.keyMode,keyStrength:c.keyStrength})),
   };
@@ -1606,6 +1616,9 @@ function applySettings(s){
   if(s.textStyle) Object.assign(state.textStyle,s.textStyle); // v12のみ（無ければ既定値のまま）
   if(s.currentTheme&&THEMES[s.currentTheme]) state.currentTheme=s.currentTheme;
   if(typeof s.fxBlend==="boolean"){ state.fxBlend=s.fxBlend; if($("fxBlendChk")){ $("fxBlendChk").checked=s.fxBlend; updateFxBlendStatus(); } }
+  if(typeof s.stickerOn==="boolean"){ state.stickerOn=s.stickerOn; if($("stickerChk")) $("stickerChk").checked=s.stickerOn; }
+  if(typeof s.stickerAmt==="number"){ state.stickerAmt=s.stickerAmt; if($("stickerAmt")) $("stickerAmt").value=s.stickerAmt; }
+  updateStickerStatus();
   if(document.readyState!=="loading"&&$("tsColor")) initTextStylePanel();
   if($("themeSelect")) $("themeSelect").value=state.currentTheme;
   migrateLegacyToLines(s); // ★旧・素材タイムライン(secAssign)／さらに古い直接レンジ指定を行タイムラインへ変換
@@ -1721,6 +1734,30 @@ function withAdditive(fn){ // state.fxBlendがONの間だけ加算合成にす�
   else fn();
 }
 document.addEventListener("DOMContentLoaded",initFxBlendToggle);
+
+/* --- デコステッカー（14章）のON/OFFと量 --- */
+state.stickerOn=true;   // 既定ON。OFFにすれば従来の見た目と直接見比べられる
+state.stickerAmt=1.0;   // 量の倍率（0.4〜2.0）。曲やテーマに合わせて手で調整できる余地
+function initStickerToggle(){
+  const chk=$("stickerChk");
+  if(chk){
+    chk.checked=!!state.stickerOn;
+    chk.onchange=()=>{ state.stickerOn=chk.checked; updateStickerStatus(); drawFrame(effT()); };
+  }
+  const sl=$("stickerAmt");
+  if(sl){
+    sl.value=state.stickerAmt;
+    sl.oninput=()=>{ state.stickerAmt=+sl.value; updateStickerStatus(); drawFrame(effT()); };
+  }
+  updateStickerStatus();
+}
+function updateStickerStatus(){
+  const s=$("stickerStatus"); if(!s) return;
+  s.textContent=state.stickerOn
+    ?("今：ON（量 ×"+(+state.stickerAmt).toFixed(1)+"／盛り上がりに応じて自動で増減します）")
+    :"今：OFF（デコなし。従来の見た目）";
+}
+document.addEventListener("DOMContentLoaded",initStickerToggle);
 if(document.readyState!=="loading") initFxBlendToggle();
 function initTextStylePanel(){
   const ts=state.textStyle;
@@ -2326,6 +2363,147 @@ function transActive(t){ // 切替演出が画面を覆っている最中か
   }
   return false;
 }
+/* ================= デコステッカー（14章：時間軸の文法） =================
+   設計方針
+   ・完全に決定論的：時刻tだけで絵が決まる。シークしても録画しても必ず同じ＝再現性がある
+   ・スロット方式：熱量に応じた本数のスロットが、それぞれ独立のリズムで生まれ変わり続ける
+   ・ボイリング：全ステッカーが常に微振動する（14-5「完全静止は避ける」＝手描き感の肝）
+*/
+const STK_PASTEL=["#FF9EC4","#7FD4FF","#FFE071","#9BE8B4","#C3AEFF","#FFB38A","#FF7FA8","#6FE3D6"];
+const STK_LOW =["note","dots","wave","ring","heart"];
+const STK_MID =["note","note2","heart","swirl","puff","sparkle","ring","wave"];
+const STK_HIGH=["sparkle","star","zigzag","burst","note2","swirl","heart","puff"];
+let _energyByLine=null;
+function invalidateEnergyCache(){ _energyByLine=null; }
+function energyByLine(){ // 行番号→その行が属するゾーンの熱量
+  if(_energyByLine) return _energyByLine;
+  const n=state.lines.length, arr=new Array(n).fill(0.35);
+  const zs=secZones();
+  if(zs.length){
+    const en=computeZoneEnergies(zs);
+    for(let i=0;i<zs[0].idx;i++) arr[i]=en[0];          // 最初のゾーンより前の行
+    for(let zi=0;zi<zs.length;zi++){
+      const to=(zi+1<zs.length)?zs[zi+1].idx:n;
+      for(let i=zs[zi].idx;i<to;i++) arr[i]=en[zi];
+    }
+  }
+  _energyByLine=arr; return arr;
+}
+function energyAt(t){
+  const arr=energyByLine(); if(!arr.length) return 0.35;
+  const li=currentLineIndex(t);
+  return arr[Math.max(0,Math.min(arr.length-1,li))];
+}
+/* 熱量→同時表示数。14-5の実測感（静か2〜6／通常8〜15／サビ15〜35）に合わせてある。
+   イントロ(0.20)=8個を1.0とすると Aメロ1.5倍・サビ3.3倍・ラスサビ3.8倍となり、GPT分析(14-2)と整合する */
+function stickerCount(e){ return Math.round(2+e*28); }
+function stkPool(e){ return e<0.30?STK_LOW:(e<0.70?STK_MID:STK_HIGH); }
+
+function drawStickerShape(kind,R){
+  ctx.lineWidth=Math.max(2,R*0.17); ctx.lineCap="round"; ctx.lineJoin="round";
+  const P=Math.PI;
+  switch(kind){
+    case "note": // 八分音符
+      ctx.beginPath(); ctx.moveTo(R*0.30,-R*0.80); ctx.lineTo(R*0.30,R*0.40); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(R*0.30,-R*0.80); ctx.quadraticCurveTo(R*0.98,-R*0.58,R*0.60,-R*0.06); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(-R*0.02,R*0.44,R*0.35,R*0.26,-0.35,0,6.29); ctx.fill(); break;
+    case "note2": // 二連符
+      ctx.beginPath(); ctx.moveTo(-R*0.40,-R*0.70); ctx.lineTo(-R*0.40,R*0.34);
+      ctx.moveTo(R*0.52,-R*0.86); ctx.lineTo(R*0.52,R*0.18); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-R*0.40,-R*0.70); ctx.quadraticCurveTo(R*0.05,-R*0.92,R*0.52,-R*0.86); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(-R*0.66,R*0.40,R*0.29,R*0.22,-0.35,0,6.29); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(R*0.26,R*0.24,R*0.29,R*0.22,-0.35,0,6.29); ctx.fill(); break;
+    case "heart":
+      ctx.beginPath(); ctx.moveTo(0,R*0.78);
+      ctx.bezierCurveTo(-R*1.15,R*0.02,-R*0.62,-R*0.92,0,-R*0.30);
+      ctx.bezierCurveTo(R*0.62,-R*0.92,R*1.15,R*0.02,0,R*0.78); ctx.stroke(); break;
+    case "swirl":{ // ぐるぐる
+      ctx.beginPath();
+      for(let i=0;i<=44;i++){ const a=i/44*P*3.2, r=R*(0.12+i/44*0.86);
+        const x=Math.cos(a)*r, y=Math.sin(a)*r*0.9;
+        i?ctx.lineTo(x,y):ctx.moveTo(x,y); }
+      ctx.stroke(); break; }
+    case "sparkle":{ // キラッ（4方向・塗り）
+      ctx.beginPath(); ctx.moveTo(0,-R);
+      ctx.quadraticCurveTo(R*0.16,-R*0.16,R,0);
+      ctx.quadraticCurveTo(R*0.16,R*0.16,0,R);
+      ctx.quadraticCurveTo(-R*0.16,R*0.16,-R,0);
+      ctx.quadraticCurveTo(-R*0.16,-R*0.16,0,-R); ctx.fill(); break; }
+    case "star":{
+      ctx.beginPath();
+      for(let i=0;i<10;i++){ const a=-P/2+i*P/5, r=i%2?R*0.44:R;
+        const x=Math.cos(a)*r,y=Math.sin(a)*r; i?ctx.lineTo(x,y):ctx.moveTo(x,y); }
+      ctx.closePath(); ctx.stroke(); break; }
+    case "zigzag":
+      ctx.beginPath(); ctx.moveTo(-R,R*0.34);
+      ctx.lineTo(-R*0.42,-R*0.34); ctx.lineTo(-R*0.02,R*0.26);
+      ctx.lineTo(R*0.44,-R*0.44); ctx.lineTo(R,R*0.20); ctx.stroke(); break;
+    case "burst": // 集中線・パッと弾ける線
+      for(let i=0;i<7;i++){ const a=i/7*6.283+0.3;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a)*R*0.34,Math.sin(a)*R*0.34);
+        ctx.lineTo(Math.cos(a)*R,Math.sin(a)*R); ctx.stroke(); } break;
+    case "puff":{ // もこもこ
+      ctx.beginPath();
+      const cs=[[-R*0.52,R*0.14,R*0.44],[0,-R*0.20,R*0.56],[R*0.54,R*0.12,R*0.42]];
+      cs.forEach(c=>{ ctx.moveTo(c[0]+c[2],c[1]); ctx.arc(c[0],c[1],c[2],0,6.29); });
+      ctx.stroke(); break; }
+    case "wave":
+      ctx.beginPath();
+      for(let i=0;i<=32;i++){ const x=-R+2*R*i/32, y=Math.sin(i/32*P*3)*R*0.32;
+        i?ctx.lineTo(x,y):ctx.moveTo(x,y); }
+      ctx.stroke(); break;
+    case "dots":
+      for(let i=0;i<3;i++){ ctx.beginPath();
+        ctx.arc(-R*0.62+i*R*0.62, Math.sin(i*2.1)*R*0.26, R*0.22,0,6.29); ctx.fill(); } break;
+    default: // ring
+      ctx.beginPath(); ctx.arc(0,0,R*0.82,0,6.29); ctx.stroke(); break;
+  }
+}
+function drawStickers(t){
+  if(!state.stickerOn) return;
+  const e=energyAt(t), pool=stkPool(e);
+  const K=Math.max(0,Math.round(stickerCount(e)*(state.stickerAmt||1)));
+  const S=Math.min(CW,CH);
+  for(let j=0;j<K;j++){
+    // ---- スロット固有（生まれ変わっても変わらない）：大きさと寿命を相関させる
+    const sf=hash01(j*1.7+3.3);            // 0..1
+    const life=0.9+sf*3.6;                 // 0.9〜4.5秒（小さいデコほど短命：14-5）
+    const cyc=life+0.15+hash01(j*4.1+9.7)*0.45; // わずかに間を空けて生え替わる
+    const u=(t+hash01(j*8.9+1.1)*cyc)/cyc;
+    const gen=Math.floor(u);
+    const q=(u-gen)*cyc/life;              // 0→1 が生存区間。1超は生え替わりの隙間
+    if(q>=1) continue;
+    // ---- 個体固有（生まれ変わるたびに変わる）
+    const sd=j*977+gen*31+7;
+    const R=S*(0.038+sf*0.065);
+    const kind=pool[Math.floor(hash01(sd*1.9)*pool.length)%pool.length];
+    const col=STK_PASTEL[Math.floor(hash01(sd*2.7)*STK_PASTEL.length)%STK_PASTEL.length];
+    // 中央（歌詞の居場所）を避けて外周寄りに置く
+    const ang=hash01(sd*2.1)*6.283, rad=0.60+hash01(sd*3.7)*0.42;
+    const m=S*0.07;
+    const x=Math.max(m,Math.min(CW-m, CW/2+Math.cos(ang)*rad*CW*0.50));
+    const y=Math.max(m,Math.min(CH-m, CH/2+Math.sin(ang)*rad*CH*0.52));
+    // ---- 出現0.12秒／退場0.20秒（14-5）。退場は「縮小＋透明化」
+    const qi=Math.min(1,q*life/0.12), qo=Math.min(1,(1-q)*life/0.20);
+    const pop=1+0.22*Math.sin(Math.min(1,qi)*Math.PI)*(1-qi*0.35); // ぷるっと出る
+    const sc=qi*pop*(0.55+qo*0.45);
+    if(sc<=0.01) continue;
+    // ---- ボイリング：周期2〜4秒・振幅3%・回転±0.8°（14-5）
+    const per=2+hash01(sd*6.1)*2, bph=hash01(sd*7.3)*6.283, w=6.283/per;
+    const bx=Math.sin(t*w+bph)*R*0.03, by=Math.cos(t*w*0.83+bph)*R*0.03;
+    ctx.save();
+    ctx.translate(x+bx,y+by);
+    ctx.rotate((hash01(sd*5.5)-0.5)*0.5 + Math.sin(t*w+bph)*0.014);
+    ctx.scale(sc,sc);
+    ctx.globalAlpha=Math.min(1,qi)*Math.min(1,qo)*0.92;
+    ctx.strokeStyle=col; ctx.fillStyle=col;
+    drawStickerShape(kind,R);
+    ctx.restore();
+  }
+  ctx.globalAlpha=1;
+}
+
 function drawDecoPops(dt){
   for(const p of decoPops) p.t+=dt;      // 先に時間を進めて…
   decoPops=decoPops.filter(p=>p.t<p.life); // …寿命切れを描く前に除外（チカつき根絶）
@@ -2751,6 +2929,7 @@ function drawFrame(t){
   drawBackground(t,li);
   drawFx(t,li,dt);   // ★全体エフェクトはキャラの後ろへ（キャラの色チラつき対策）
   drawChars(t,li);
+  drawStickers(t); // ★デコステッカー（14章）：文字より後ろ＝歌詞の可読性を守る
   drawDecoPops(dt); // ★文字の後ろのレイヤーで、行をまたいでも溶けて消える
   drawLyric(t,li);
   drawSparks(dt);
