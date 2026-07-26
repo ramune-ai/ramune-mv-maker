@@ -146,12 +146,17 @@
       <label class="filebtn" style="background:#E4F3FC;color:var(--soda-deep);">📄 歌詞txtを選ぶ<input type="file" id="lyricTxtFile" accept=".txt,text/plain"></label>
       <span class="note">貼り付け・D&Dの代わりにファイル選択でも読み込めます</span>
     </div>
-    <textarea id="sectionText" style="min-height:340px; font-size:1.05rem; line-height:1.7;" placeholder="[Verse 1]&#10;ずっと しまってた 小さな宝物&#10;…（元の歌詞をぜんぶ貼り付け or .txtをドロップ）"></textarea>
+    <textarea id="sectionText" placeholder="[Verse 1]&#10;ずっと しまってた 小さな宝物&#10;…（元の歌詞をぜんぶ貼り付け or .txtをドロップ）"
+      style="min-height:340px; font-size:1.05rem; line-height:1.7;
+             width:min(96vw,2200px); max-width:96vw; position:relative; left:50%; transform:translateX(-50%);"></textarea>
     <div class="row">
       <button class="btn ghost" onclick="importSections()">セクションを読み取る／歌詞を反映</button>
       <button class="btn pink" onclick="tapStart()">🎤 タップ打ち込み（JSONをここで作る）</button>
+      <button class="btn ghost" id="snapBtn" onclick="snapLyricTiming()">🎯 行のタイミングを歌に吸着</button>
       <span class="note" id="sectionSummary"></span>
     </div>
+    <p class="note">🎯は、タップ打ち込みや読み込んだJSONの各行を、±0.3秒の範囲で「本当の歌い出し」に寄せます。
+      手で押したときの早すぎ・遅すぎを機械が直すので、タップのあとに1回押すのがおすすめです。</p>
     <p class="note">✏️ ここで歌詞そのものを打ち直したり、強調したい単語を<code>*このように*</code>アスタリスクで
       囲んでから「セクションを読み取る／歌詞を反映」を押すと、タイミングはそのままで歌詞の中身（誤字修正・強調マーク）
       だけを反映できます。</p>
@@ -343,6 +348,9 @@
       <label><input type="checkbox" id="stickerChk" style="width:auto;"> 🎀 デコステッカー（手描き風の音符・ハート等）</label>
       <label style="flex:0 0 auto;">量
         <input type="range" id="stickerAmt" min="0.4" max="2" step="0.1" value="1" style="width:120px; vertical-align:middle;">
+      </label>
+      <label style="flex:0 0 auto;">揺れ
+        <input type="range" id="stickerBoil" min="0" max="8" step="0.5" value="3" style="width:120px; vertical-align:middle;">
       </label>
       <span class="note" id="stickerStatus"></span>
       <span class="note">セクションの盛り上がりに応じて自動で増減します（イントロは控えめ／サビは賑やか／落ちサビは静か）</span>
@@ -1533,12 +1541,23 @@ async function autoBPM(){
   btn.disabled=false;
 }
 
-/* ================= 一文字ずつのボーカル同期（柱B・14-4） =================
-   autoBPMと同じ「オンセット包絡線」の考え方を、1行の窓の中だけ・もっと細かい分解能で使う。
-   各行の表示時間内で音が強くなる瞬間（＝歌い出しの瞬間）を検出し、強い順にn個（文字数ぶん）拾って
-   時刻順に並べ替える。これを各文字の出現タイミングとして使うことで、
-   均等割りではなく実際の歌い方に近いタイミングになる。 */
-let _vocalDecoded=null;
+/* ================= 歌との同期エンジン（柱B・14-4／16-4で精度改善） =================
+   旧実装の問題（精度が低かった原因）：
+   ① 全帯域の音量差分をそのまま使っていた → キック/ベース/スネアが支配的で、
+      肝心のボーカルの立ち上がりが埋もれていた。
+   ② 強い順にn個拾って時刻順に並べるだけ → 1音節の中に何個もピークが立つと、
+      そこだけで枠を使い切ってしまい、後半の文字が全部同じ時刻に潰れていた。
+      （実際に「差がちょうど0.02秒」の並びが多発＝単調増加の応急処置が効きっぱなしだった）
+   ③ 日本語を1文字＝1音として扱っていた → 「しゃ」「きょ」「っ」「ー」に個別の
+      タイミングを割り当てようとして必ずズレていた。
+
+   新実装：
+   ① 声の帯域（およそ300〜3400Hz）だけを通してから包絡線を取る。さらにステレオなら
+      中央成分(L+R)/2を使う（ボーカルは中央に定位していることが多いため）。
+   ② ピークは「最小間隔」を守って選ぶ（1音節に1個まで）。
+   ③ 日本語をモーラ（拍）単位にまとめてから割り当てる。
+   ④ 割り当ては貪欲法ではなく動的計画法で、順序を保ったまま全体の誤差が最小になる組を選ぶ。 */
+let _vocalDecoded=null, _vocalEnv=null;
 async function decodedAudioBuffer(){
   if(_vocalDecoded) return _vocalDecoded;
   if(!audioBlob) return null;
@@ -1547,24 +1566,94 @@ async function decodedAudioBuffer(){
   _vocalDecoded=await actx.decodeAudioData(buf);
   return _vocalDecoded;
 }
-function findOnsetTimes(data,sr,tStart,tEnd,count){
-  const hop=256; // 256/44100≈5.8ms：文字レベルの分解能（autoBPMの512より細かい）
-  const i0=Math.max(0,Math.floor(tStart*sr)), i1=Math.min(data.length,Math.floor(tEnd*sr));
-  const len=i1-i0; if(len<=0) return [];
-  const frames=Math.floor(len/hop);
-  if(frames<3) return [];
+const VOC_HOP=256; // 256/44100≈5.8ms
+/* 声の帯域だけを通した包絡線とオンセット（曲全体ぶんを1回だけ計算してキャッシュ） */
+function buildVocalEnvelope(decoded){
+  if(_vocalEnv) return _vocalEnv;
+  const sr=decoded.sampleRate, N=decoded.length;
+  const L=decoded.getChannelData(0);
+  const R=decoded.numberOfChannels>1?decoded.getChannelData(1):null;
+  // 1極フィルタでバンドパス（300Hz以下と3400Hz以上を落とす）
+  const hpA=Math.exp(-2*Math.PI*300/sr);
+  const lpA=Math.exp(-2*Math.PI*3400/sr);
+  const frames=Math.floor(N/VOC_HOP);
   const env=new Float32Array(frames);
-  for(let i=0;i<frames;i++){
-    let e=0; const o=i0+i*hop;
-    for(let k=0;k<hop;k+=2) e+=Math.abs(data[o+k]);
-    env[i]=e;
+  let hpIn=0,hpOut=0,lp=0,acc=0,fi=0,cnt=0;
+  for(let i=0;i<N;i++){
+    const x=R?(L[i]+R[i])*0.5:L[i];     // 中央成分＝ボーカルが残りやすい
+    const hp=hpA*(hpOut+x-hpIn); hpIn=x; hpOut=hp;
+    lp=lp+(1-lpA)*(hp-lp);
+    acc+=Math.abs(lp); cnt++;
+    if(cnt===VOC_HOP){ if(fi<frames) env[fi++]=acc; acc=0; cnt=0; }
   }
   const onset=new Float32Array(frames);
   for(let i=1;i<frames;i++) onset[i]=Math.max(0,env[i]-env[i-1]);
-  const peaks=[];
-  for(let i=1;i<frames-1;i++) if(onset[i]>onset[i-1]&&onset[i]>=onset[i+1]) peaks.push({i,v:onset[i]});
-  peaks.sort((a,b)=>b.v-a.v);
-  return peaks.slice(0,count).map(p=>i0/sr+p.i*hop/sr).sort((a,b)=>a-b); // ★絶対時刻（i0を足し忘れて全行分ズレるバグを修正）
+  _vocalEnv={sr,frames,env,onset,hopT:VOC_HOP/sr};
+  return _vocalEnv;
+}
+/* 最小間隔を守ってピークを選ぶ（1音節に何個も立たせない） */
+function pickPeaks(V,fStart,fEnd,minGapSec){
+  const gap=Math.max(1,Math.round(minGapSec/V.hopT));
+  const cand=[];
+  for(let i=Math.max(1,fStart);i<Math.min(V.frames-1,fEnd);i++){
+    const o=V.onset[i];
+    if(o>0&&o>V.onset[i-1]&&o>=V.onset[i+1]) cand.push({i,v:o});
+  }
+  cand.sort((a,b)=>b.v-a.v);
+  const out=[];
+  for(const p of cand){
+    let ok=true;
+    for(const q of out) if(Math.abs(q.i-p.i)<gap){ ok=false; break; }
+    if(ok) out.push(p);
+  }
+  out.sort((a,b)=>a.i-b.i);
+  return out;
+}
+/* 日本語のモーラ（拍）にまとめる。小書き・長音・記号・空白は前の文字にくっつける */
+const MORA_ATTACH="ぁぃぅぇぉっゃゅょゎヵヶァィゥェォッャュョヮー〜～ｰ、。，．・！？!?…‥";
+function moraGroups(chars){
+  const g=[];
+  for(let i=0;i<chars.length;i++){
+    const c=chars[i];
+    const attach=MORA_ATTACH.includes(c)||/[\s　゙゚]/.test(c);
+    if(g.length&&attach) g[g.length-1].push(i);
+    else g.push([i]);
+  }
+  return g;
+}
+/* 順序を保ったまま、m個のモーラに候補ピークを割り当てる（動的計画法）。
+   コスト＝「均等割りからのズレ」－「ピークの強さのボーナス」 */
+function alignMoraToPeaks(peaks,m,winLen,hopT,tBase){
+  const P=peaks.length;
+  if(P<m||m<1) return null;
+  let maxV=0; for(const p of peaks) maxV=Math.max(maxV,p.v);
+  const tOf=p=>peaks[p].i*hopT-tBase;
+  const cost=(k,p)=>{
+    const expect=(m===1)?0:(k/(m-1))*winLen*0.82;
+    return Math.abs(tOf(p)-expect)-0.30*winLen*(peaks[p].v/(maxV||1));
+  };
+  const INF=1e18;
+  let prev=new Float64Array(P).fill(INF);
+  const back=[];
+  for(let k=0;k<m;k++){
+    const cur=new Float64Array(P).fill(INF);
+    const bk=new Int32Array(P).fill(-1);
+    if(k===0){ for(let p=0;p<P;p++) cur[p]=cost(0,p); }
+    else{
+      let best=INF,bestIdx=-1;
+      for(let p=0;p<P;p++){
+        if(p>0&&prev[p-1]<best){ best=prev[p-1]; bestIdx=p-1; }
+        if(best<INF){ cur[p]=best+cost(k,p); bk[p]=bestIdx; }
+      }
+    }
+    back.push(bk); prev=cur;
+  }
+  let bi=-1,bv=INF;
+  for(let p=0;p<P;p++) if(prev[p]<bv){ bv=prev[p]; bi=p; }
+  if(bi<0) return null;
+  const idx=new Array(m);
+  for(let k=m-1;k>=0;k--){ idx[k]=bi; bi=back[k][bi]; }
+  return idx.map(p=>tOf(p));
 }
 async function analyzeVocalChars(){
   if(!audioBlob){ await modalAlert("①でMP3を読み込んでね"); return; }
@@ -1572,33 +1661,85 @@ async function analyzeVocalChars(){
   btn.textContent="🎤 解析中…"; btn.disabled=true;
   try{
     const decoded=await decodedAudioBuffer();
-    const sr=decoded.sampleRate, data=decoded.getChannelData(0);
+    const V=buildVocalEnvelope(decoded);
     pushUndo();
-    let done=0;
+    let done=0, skipped=0;
     state.lines.forEach((line,idx)=>{
       if(line.gap) return;
-      const n=parseEmphasis(line.text).clean.length;
-      if(n<2) return;
-      const t0=lineTime(line), tEnd=lineEnd(idx);
-      const win=Math.max(0.3,(tEnd-t0)*0.9);
-      const peaks=findOnsetTimes(data,sr,t0,t0+win,n);
-      if(peaks.length<Math.max(2,Math.floor(n*0.4))) return; // 手がかりが少なすぎる行は従来の均等割りのまま
-      const times=new Array(n);
-      let pi=0;
-      for(let k=0;k<n;k++){
-        const target=(k/(n-1))*win;
-        while(pi<peaks.length-1 && Math.abs(peaks[pi+1]-t0-target)<Math.abs(peaks[pi]-t0-target)) pi++;
-        times[k]=peaks[Math.min(pi,peaks.length-1)]-t0;
-      }
-      for(let k=1;k<n;k++) if(times[k]<=times[k-1]) times[k]=times[k-1]+0.02; // 単調増加を保証
+      const chars=[...parseEmphasis(line.text).clean];
+      if(chars.length<2) return;
+      const groups=moraGroups(chars);
+      const m=groups.length;
+      const t0=lineTime(line);
+      const nextT=(idx+1<state.lines.length)?lineTime(state.lines[idx+1]):t0+8;
+      const winEnd=Math.min(nextT,t0+10);
+      const winLen=winEnd-t0;
+      if(winLen<0.25){ skipped++; return; }
+      const peaks=pickPeaks(V,Math.floor(t0/V.hopT),Math.floor(winEnd/V.hopT),0.085);
+      const moraT=alignMoraToPeaks(peaks,m,winLen,V.hopT,t0);
+      if(!moraT){ skipped++; return; } // 声の手がかりが足りない行は従来の均等割りのまま
+      const times=new Array(chars.length);
+      groups.forEach((g,gi)=>{ for(const ci of g) times[ci]=moraT[gi]; }); // 同じモーラの文字は同時に出す
+      for(let k=1;k<times.length;k++) if(times[k]<times[k-1]) times[k]=times[k-1];
       line.charTimes=times; done++;
     });
     renderLineList();
-    await modalAlert(`✅ ${done}行の文字タイミングをボーカルに同期しました（自動保存されます）`);
+    await modalAlert(`✅ ${done}行を歌に同期しました`+(skipped?`（${skipped}行は声の手がかりが少ないため均等割りのまま）`:"")+"（自動保存されます）");
   }catch(err){
     await modalAlert("解析に失敗しました: "+err.message);
   }
   btn.textContent="🎤 歌詞を一文字ずつボーカルに同期"; btn.disabled=false;
+}
+
+/* ================= 行のタイミングを歌に吸着（16-5） =================
+   「歌詞テキストだけから全自動でタイミングを作る」方式を実装して計測したところ、
+   実データで37行中0行しか誤差300ms以内に入らず（誤差中央値43秒）、使いものにならなかった。
+   原因：伴奏も声と同じ帯域（300〜3400Hz）を占めるため、音量だけでは
+   「歌っている区間」と「間奏」を分離できない。全自動にはボーカル分離かASRが要る（PLAN.md 16-6参照）。
+
+   そこで方式を変えた。人が与えた大まかな位置（タップ打ち込み／既存JSON）はそのまま信用し、
+   アルゴリズムは「その近くにある本当の歌い出し」へ寄せるだけに徹する。
+   人の手の遅れ・早すぎを機械が直す形なので、外しようがなく、確実に精度が上がる。 */
+function snapLinesToVocal(V,windowSec){
+  const res={moved:0,total:0,deltas:[]};
+  const half=Math.round(windowSec/V.hopT);
+  state.lines.forEach(line=>{
+    if(line.gap) return;
+    res.total++;
+    const t=line.time+lyricOffset();
+    const c=Math.round(t/V.hopT);
+    let bi=-1,bv=0;
+    for(let i=Math.max(1,c-half);i<Math.min(V.frames-1,c+half);i++){
+      const o=V.onset[i];
+      if(o>bv&&o>V.onset[i-1]&&o>=V.onset[i+1]){ bv=o; bi=i; }
+    }
+    if(bi<0) return;
+    const nt=bi*V.hopT-lyricOffset();
+    const d=nt-line.time;
+    if(Math.abs(d)<0.005) return;
+    line.time=+nt.toFixed(3);
+    line.charTimes=undefined; // 行頭が動いたので文字タイミングは取り直しが必要
+    res.moved++; res.deltas.push(d);
+  });
+  return res;
+}
+async function snapLyricTiming(){
+  if(!audioBlob){ await modalAlert("①でMP3を読み込んでね"); return; }
+  if(!state.lines.length){ await modalAlert("先に歌詞タイミング（JSON）を読み込むか、タップ打ち込みをしてね"); return; }
+  const btn=$("snapBtn");
+  btn.textContent="🎯 解析中…"; btn.disabled=true;
+  try{
+    const V=buildVocalEnvelope(await decodedAudioBuffer());
+    pushUndo();
+    const r=snapLinesToVocal(V,0.30); // ±0.30秒の範囲だけを探す（大きく動かさない＝暴走しない）
+    const avg=r.deltas.length?r.deltas.reduce((a,b)=>a+Math.abs(b),0)/r.deltas.length:0;
+    renderLineList();
+    await modalAlert(`✅ ${r.moved}/${r.total}行を歌の立ち上がりに吸着しました（平均 ${(avg*1000).toFixed(0)}ms 移動）\n`+
+      `続けて「🎤 歌詞を一文字ずつボーカルに同期」を押すと、文字単位もやり直せます`);
+  }catch(err){
+    await modalAlert("解析に失敗しました: "+err.message);
+  }
+  btn.textContent="🎯 行のタイミングを歌に吸着"; btn.disabled=false;
 }
 
 /* BPMタップ */
@@ -1706,7 +1847,7 @@ function gatherSettings(){
     fx:{always:$("fxAlways").value}, // 個別の背景・キャラ・エフェクトは行タイムライン(state.lines[].bg/ch/fx)側が正
     easeDefault:{...state.easeDefault}, easeApply:!!state.easeApply,
     textStyle:{...state.textStyle}, currentTheme:state.currentTheme, fxBlend:!!state.fxBlend,
-    stickerOn:!!state.stickerOn, stickerAmt:+state.stickerAmt||1,
+    stickerOn:!!state.stickerOn, stickerAmt:+state.stickerAmt||1, stickerBoil:+state.stickerBoil,
     bgs:state.bgs.map(b=>({name:b.name})),
     chars:state.chars.map(c=>({name:c.name,keyMode:c.keyMode,keyStrength:c.keyStrength})),
   };
@@ -1733,6 +1874,7 @@ function applySettings(s){
   if(typeof s.fxBlend==="boolean"){ state.fxBlend=s.fxBlend; if($("fxBlendChk")){ $("fxBlendChk").checked=s.fxBlend; updateFxBlendStatus(); } }
   if(typeof s.stickerOn==="boolean"){ state.stickerOn=s.stickerOn; if($("stickerChk")) $("stickerChk").checked=s.stickerOn; }
   if(typeof s.stickerAmt==="number"){ state.stickerAmt=s.stickerAmt; if($("stickerAmt")) $("stickerAmt").value=s.stickerAmt; }
+  if(typeof s.stickerBoil==="number"){ state.stickerBoil=s.stickerBoil; if($("stickerBoil")) $("stickerBoil").value=s.stickerBoil; }
   updateStickerStatus();
   if(document.readyState!=="loading"&&$("tsColor")) initTextStylePanel();
   if($("themeSelect")) $("themeSelect").value=state.currentTheme;
@@ -1858,6 +2000,7 @@ document.addEventListener("DOMContentLoaded",initFxBlendToggle);
 /* --- デコステッカー（14章）のON/OFFと量 --- */
 state.stickerOn=true;   // 既定ON。OFFにすれば従来の見た目と直接見比べられる
 state.stickerAmt=1.0;   // 量の倍率（0.4〜2.0）。曲やテーマに合わせて手で調整できる余地
+state.stickerBoil=3;    // 揺れの強さの倍率（0〜8）。種類ごとの比率は保ったまま全体を強める
 function initStickerToggle(){
   const chk=$("stickerChk");
   if(chk){
@@ -1869,12 +2012,17 @@ function initStickerToggle(){
     sl.value=state.stickerAmt;
     sl.oninput=()=>{ state.stickerAmt=+sl.value; updateStickerStatus(); drawFrame(effT()); };
   }
+  const sb=$("stickerBoil");
+  if(sb){
+    sb.value=state.stickerBoil;
+    sb.oninput=()=>{ state.stickerBoil=+sb.value; updateStickerStatus(); drawFrame(effT()); };
+  }
   updateStickerStatus();
 }
 function updateStickerStatus(){
   const s=$("stickerStatus"); if(!s) return;
   s.textContent=state.stickerOn
-    ?("今：ON（量 ×"+(+state.stickerAmt).toFixed(1)+"／盛り上がりに応じて自動で増減します）")
+    ?("今：ON（量 ×"+(+state.stickerAmt).toFixed(1)+"／揺れ ×"+(+state.stickerBoil).toFixed(1)+"）")
     :"今：OFF（デコなし。従来の見た目）";
 }
 document.addEventListener("DOMContentLoaded",initStickerToggle);
@@ -2509,8 +2657,8 @@ function transActive(t){ // 切替演出が画面を覆っている最中か
 */
 const STK_PASTEL=["#FF9EC4","#7FD4FF","#FFE071","#9BE8B4","#C3AEFF","#FFB38A","#FF7FA8","#6FE3D6"];
 const STK_LOW =["note","wave","ring","heart","swirl"];
-const STK_MID =["note","note2","heart","swirl","puff","sparkle","ring","wave"];
-const STK_HIGH=["sparkle","star","zigzag","burst","note2","swirl","heart","puff"];
+const STK_MID =["note","note2","heart","swirl","sparkle","ring","wave"];
+const STK_HIGH=["sparkle","star","zigzag","burst","note2","swirl","heart"];
 let _energyByLine=null;
 function invalidateEnergyCache(){ _energyByLine=null; }
 function energyByLine(){ // 行番号→その行が属するゾーンの熱量
@@ -2549,7 +2697,6 @@ const STK_BOIL={
   wave:  {pos:0.015,rotDeg:0.5, scale:0,     every:4}, // 手描き線
   zigzag:{pos:0.015,rotDeg:0.5, scale:0,     every:4}, // 手描き線
   burst: {pos:0.0075,rotDeg:0,  scale:0.0055,every:4}, // 集中線
-  puff:  {pos:0.025,rotDeg:0.8, scale:0.015, every:2}, // もこもこ
   ring:  {pos:0.0115,rotDeg:0.5,scale:0.0075,every:4}, // 大きいステッカー相当
 };
 function boilOf(kind){ return STK_BOIL[kind]||STK_BOIL.ring; }
@@ -2598,11 +2745,6 @@ function drawStickerShape(kind,R){
         ctx.beginPath();
         ctx.moveTo(Math.cos(a)*R*0.34,Math.sin(a)*R*0.34);
         ctx.lineTo(Math.cos(a)*R,Math.sin(a)*R); ctx.stroke(); } break;
-    case "puff":{ // もこもこ
-      ctx.beginPath();
-      const cs=[[-R*0.52,R*0.14,R*0.44],[0,-R*0.20,R*0.56],[R*0.54,R*0.12,R*0.42]];
-      cs.forEach(c=>{ ctx.moveTo(c[0]+c[2],c[1]); ctx.arc(c[0],c[1],c[2],0,6.29); });
-      ctx.stroke(); break; }
     case "wave":
       ctx.beginPath();
       for(let i=0;i<=32;i++){ const x=-R+2*R*i/32, y=Math.sin(i/32*P*3)*R*0.32;
@@ -2657,12 +2799,15 @@ function drawStickers(t){
     //   細かく切り替わり、ユーザーには「震えている」ように見えてしまった（フィードバックで判明）。
     //   さらにGPT分析（14章追記）により、揺れ幅そのものも「2〜3倍揺れ過ぎ」と判明したため、
     //   種類ごとの推奨値（STK_BOIL）に差し替えた。値が0の種類（集中線等）は振動させない。
-    const bo=boilOf(kind);
+    // ★倍率(state.stickerBoil)で全体の揺れ幅を調整できる。GPTの推奨値は実際のMVの数値だが、
+    //   プレビューの表示サイズでは「動いて見えない」というフィードバックがあったため、
+    //   種類ごとの比率は保ったまま、全体を掛け算で強められるようにした。
+    const bo=boilOf(kind), bm=(state.stickerBoil==null?3:state.stickerBoil);
     const stp=Math.floor(beatCount(t)/bo.every); // 何拍目か（同じ拍の間は完全に静止）
-    const bx=(hash01(sd+stp*7.3)-0.5)*R*bo.pos*2;
-    const by=(hash01(sd+stp*11.7)-0.5)*R*bo.pos*2;
-    const brot=(hash01(sd+stp*13.1)-0.5)*(bo.rotDeg*Math.PI/180)*2;
-    const bsc=1+(hash01(sd+stp*17.3)-0.5)*bo.scale*2;
+    const bx=(hash01(sd+stp*7.3)-0.5)*R*bo.pos*2*bm;
+    const by=(hash01(sd+stp*11.7)-0.5)*R*bo.pos*2*bm;
+    const brot=(hash01(sd+stp*13.1)-0.5)*(bo.rotDeg*Math.PI/180)*2*bm;
+    const bsc=1+(hash01(sd+stp*17.3)-0.5)*bo.scale*2*bm;
     ctx.save();
     ctx.translate(x+bx,y+by);
     ctx.rotate((hash01(sd*5.5)-0.5)*0.5 + brot);
