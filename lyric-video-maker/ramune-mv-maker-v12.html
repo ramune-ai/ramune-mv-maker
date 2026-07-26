@@ -137,6 +137,7 @@
           <option value='"Yu Gothic UI","Yu Gothic","游ゴシック"'>游ゴシック</option>
         </select>
       </label>
+      <button type="button" class="btn ghost" id="fontFavBtn" style="flex:0 0 auto;">☆ お気に入りにする</button>
       <label class="filebtn" style="background:#E4F3FC;color:var(--soda-deep);">🔤 フォントを追加（ttf/otf/woff2・複数OK）<input type="file" id="fontFile" accept=".ttf,.otf,.woff,.woff2" multiple></label>
       <span class="note" id="fontName">追加したフォントは🔤付きでメニューに増え、このブラウザに保存されて次回も使えます</span>
     </div>
@@ -227,6 +228,10 @@
 
     </div>
     <p class="note">基本は🤖自動判定でOK（🪄おまかせMVでも自動実行）。ズレたらタップ測定＋「1拍目の時刻」を微調整。倍/半分に感じたらBPMを2倍/半分に。ビートランプは③プレビュー左下の●●●●。</p>
+    <div class="row">
+      <button class="btn ghost" id="vocalSyncBtn" onclick="analyzeVocalChars()">🎤 歌詞を一文字ずつボーカルに同期</button>
+      <span class="note">MP3の音の強弱から、文字が出るタイミングを自動で合わせます（手がかりが少ない行は従来通り均等割り）</span>
+    </div>
 
     <h2 style="margin-top:18px;">歌詞の全体調整</h2>
     <div class="row">
@@ -518,7 +523,8 @@ function loadTiming(d){
   if(!Array.isArray(d.lines)) throw new Error("lines がありません");
   state.lines=d.lines.filter(l=>typeof l.time==="number")
     .map(l=>({text:String(l.text), time:l.time, motion:l.motion||"default", deco:l.deco, style:l.style, gap:!!l.gap, section:l.section, trans:l.trans,
-      bg:l.bg, ch:l.ch, chPos:l.chPos, chSize:l.chSize, chMotion:l.chMotion, fx:l.fx, pop:!!l.pop}));
+      bg:l.bg, ch:l.ch, chPos:l.chPos, chSize:l.chSize, chMotion:l.chMotion, fx:l.fx, pop:!!l.pop,
+      charTimes:Array.isArray(l.charTimes)?l.charTimes:undefined}));
   state.title=d.title||state.title;
   if(Array.isArray(d.credits)) state.credits=d.credits;
   state.savedSettings=d.settings||null;
@@ -584,7 +590,7 @@ function projectData(){
     credits:state.credits,
     sectionText:$("sectionText").value,
     lines:state.lines.map(l=>({text:l.text,time:l.time,motion:l.motion||"default",deco:l.deco||undefined,style:l.style||undefined,gap:!!l.gap||undefined,section:l.section||undefined,trans:l.trans||undefined,
-      bg:l.bg||undefined,ch:l.ch||undefined,chPos:l.chPos||undefined,chSize:l.chSize||undefined,chMotion:l.chMotion||undefined,fx:l.fx||undefined,pop:l.pop||undefined})),
+      bg:l.bg||undefined,ch:l.ch||undefined,chPos:l.chPos||undefined,chSize:l.chSize||undefined,chMotion:l.chMotion||undefined,fx:l.fx||undefined,pop:l.pop||undefined,charTimes:l.charTimes||undefined})),
     settings:gatherSettings()};
 }
 setInterval(()=>{ // 4秒ごとに自動保存
@@ -659,6 +665,49 @@ function tapFinish(){
   renderLineList();
   alert(`✅ ${done.length}行を反映しました！（自動保存されます。プロジェクトJSONの書き出しもおすすめ）`);
 }
+/* --- フォント：見た目プレビュー表示＋お気に入り（ユーザーフィードバック対応） --- */
+function loadFontFavs(){ try{ return new Set(JSON.parse(localStorage.getItem("ramuneFontFavorites")||"[]")); }catch(e){ return new Set(); } }
+function saveFontFavs(){ try{ localStorage.setItem("ramuneFontFavorites", JSON.stringify([...state.fontFavorites])); }catch(e){} }
+state.fontFavorites=loadFontFavs();
+function isFontFav(val){ return state.fontFavorites.has(val); }
+function toggleFontFav(val){
+  if(state.fontFavorites.has(val)) state.fontFavorites.delete(val); else state.fontFavorites.add(val);
+  saveFontFavs(); reorderFontSelect(); updateFontFavBtn();
+}
+function styleFontOptions(){ // ①の一覧で、各フォント名をそのフォント自身の書体で表示する
+  for(const o of $("fontSelect").options)
+    o.style.fontFamily=(o.value?o.value+",":"")+'"Hiragino Maru Gothic ProN","Yu Gothic UI","Meiryo",sans-serif';
+}
+function markFavLabels(){
+  for(const o of $("fontSelect").options){
+    const base=o.textContent.replace(/^⭐\s*/,"");
+    o.textContent=isFontFav(o.value)?("⭐ "+base):base;
+  }
+}
+function reorderFontSelect(){ // お気に入りを上に集める（選択中の値は保つ）
+  const sel=$("fontSelect"); if(!sel) return;
+  const cur=sel.value;
+  const opts=[...sel.options];
+  const favs=opts.filter(o=>isFontFav(o.value));
+  const rest=opts.filter(o=>!isFontFav(o.value));
+  [...favs,...rest].forEach(o=>sel.appendChild(o));
+  markFavLabels(); styleFontOptions();
+  if([...sel.options].some(o=>o.value===cur)) sel.value=cur;
+}
+function updateFontFavBtn(){
+  const btn=$("fontFavBtn"); if(!btn) return;
+  const on=isFontFav($("fontSelect").value);
+  btn.textContent=on?"⭐ お気に入り中":"☆ お気に入りにする";
+}
+function initFontFavUI(){
+  reorderFontSelect();
+  const btn=$("fontFavBtn");
+  if(btn) btn.onclick=()=>toggleFontFav($("fontSelect").value);
+  $("fontSelect").addEventListener("change",updateFontFavBtn);
+  updateFontFavBtn();
+}
+document.addEventListener("DOMContentLoaded",initFontFavUI);
+
 function famOf(name){ return "RF_"+name.replace(/\.[^.]+$/,"").replace(/[^\w\-]/g,"_"); }
 async function registerFont(name,buf,persist){
   const fam=famOf(name);
@@ -678,6 +727,7 @@ async function addFontFiles(files){
     try{ await registerFont(f.name, await f.arrayBuffer(), true); }
     catch(err){ alert(f.name+" を読めませんでした: "+err.message); }
   }
+  reorderFontSelect(); updateFontFavBtn();
 }
 (async function restoreFonts(){ // 起動時に保存済みフォントを復元
   try{
@@ -687,6 +737,7 @@ async function addFontFiles(files){
       rq.onsuccess=()=>res(rq.result); rq.onerror=()=>rej(rq.error);
     });
     for(const f of all) await registerFont(f.name,f.buf,false);
+    reorderFontSelect(); updateFontFavBtn();
     if(state.pendingFontSelect){ $("fontSelect").value=state.pendingFontSelect; drawFrame(effT()); }
   }catch(e){ console.warn("font restore failed",e); }
 })();
@@ -1476,6 +1527,74 @@ async function autoBPM(){
   btn.disabled=false;
 }
 
+/* ================= 一文字ずつのボーカル同期（柱B・14-4） =================
+   autoBPMと同じ「オンセット包絡線」の考え方を、1行の窓の中だけ・もっと細かい分解能で使う。
+   各行の表示時間内で音が強くなる瞬間（＝歌い出しの瞬間）を検出し、強い順にn個（文字数ぶん）拾って
+   時刻順に並べ替える。これを各文字の出現タイミングとして使うことで、
+   均等割りではなく実際の歌い方に近いタイミングになる。 */
+let _vocalDecoded=null;
+async function decodedAudioBuffer(){
+  if(_vocalDecoded) return _vocalDecoded;
+  if(!audioBlob) return null;
+  ensureAudioGraph();
+  const buf=await audioBlob.arrayBuffer();
+  _vocalDecoded=await actx.decodeAudioData(buf);
+  return _vocalDecoded;
+}
+function findOnsetTimes(data,sr,tStart,tEnd,count){
+  const hop=256; // 256/44100≈5.8ms：文字レベルの分解能（autoBPMの512より細かい）
+  const i0=Math.max(0,Math.floor(tStart*sr)), i1=Math.min(data.length,Math.floor(tEnd*sr));
+  const len=i1-i0; if(len<=0) return [];
+  const frames=Math.floor(len/hop);
+  if(frames<3) return [];
+  const env=new Float32Array(frames);
+  for(let i=0;i<frames;i++){
+    let e=0; const o=i0+i*hop;
+    for(let k=0;k<hop;k+=2) e+=Math.abs(data[o+k]);
+    env[i]=e;
+  }
+  const onset=new Float32Array(frames);
+  for(let i=1;i<frames;i++) onset[i]=Math.max(0,env[i]-env[i-1]);
+  const peaks=[];
+  for(let i=1;i<frames-1;i++) if(onset[i]>onset[i-1]&&onset[i]>=onset[i+1]) peaks.push({i,v:onset[i]});
+  peaks.sort((a,b)=>b.v-a.v);
+  return peaks.slice(0,count).map(p=>i0/sr+p.i*hop/sr).sort((a,b)=>a-b); // ★絶対時刻（i0を足し忘れて全行分ズレるバグを修正）
+}
+async function analyzeVocalChars(){
+  if(!audioBlob){ await modalAlert("①でMP3を読み込んでね"); return; }
+  const btn=$("vocalSyncBtn");
+  btn.textContent="🎤 解析中…"; btn.disabled=true;
+  try{
+    const decoded=await decodedAudioBuffer();
+    const sr=decoded.sampleRate, data=decoded.getChannelData(0);
+    pushUndo();
+    let done=0;
+    state.lines.forEach((line,idx)=>{
+      if(line.gap) return;
+      const n=parseEmphasis(line.text).clean.length;
+      if(n<2) return;
+      const t0=lineTime(line), tEnd=lineEnd(idx);
+      const win=Math.max(0.3,(tEnd-t0)*0.9);
+      const peaks=findOnsetTimes(data,sr,t0,t0+win,n);
+      if(peaks.length<Math.max(2,Math.floor(n*0.4))) return; // 手がかりが少なすぎる行は従来の均等割りのまま
+      const times=new Array(n);
+      let pi=0;
+      for(let k=0;k<n;k++){
+        const target=(k/(n-1))*win;
+        while(pi<peaks.length-1 && Math.abs(peaks[pi+1]-t0-target)<Math.abs(peaks[pi]-t0-target)) pi++;
+        times[k]=peaks[Math.min(pi,peaks.length-1)]-t0;
+      }
+      for(let k=1;k<n;k++) if(times[k]<=times[k-1]) times[k]=times[k-1]+0.02; // 単調増加を保証
+      line.charTimes=times; done++;
+    });
+    renderLineList();
+    await modalAlert(`✅ ${done}行の文字タイミングをボーカルに同期しました（自動保存されます）`);
+  }catch(err){
+    await modalAlert("解析に失敗しました: "+err.message);
+  }
+  btn.textContent="🎤 歌詞を一文字ずつボーカルに同期"; btn.disabled=false;
+}
+
 /* BPMタップ */
 let bpmTaps=[];
 function bpmTap(){
@@ -1690,6 +1809,10 @@ function beatPhase(t){
   const bpm=+$("bpm").value||128, off=+$("beatOffset").value||0;
   const b=(t-off)*bpm/60; return b-Math.floor(b);
 }
+function beatCount(t){ // 通し番号としての拍（0,1,2,3…）。ステッカーのビート同期に使う
+  const bpm=+$("bpm").value||128, off=+$("beatOffset").value||0;
+  return Math.floor((t-off)*bpm/60);
+}
 function currentLineIndex(t){
   let idx=-1;
   for(let i=0;i<state.lines.length;i++){ if(lineTime(state.lines[i])<=t) idx=i; else break; }
@@ -1707,7 +1830,8 @@ function styleOf(l){ return (l.style&&l.style!=="default")?l.style:$("lyricStyle
 state.easeDefault={family:"back",dir:"out",outPct:33,inPct:33,overshoot:1.7,amp:1,period:0.3,stiffness:170,damping:14,n:4,jump:"end",x1:0.42,y1:0,x2:0.58,y2:1};
 state.easeApply=false; // OFFなら各モーションは元の挙動そのまま。ONで動き出しの速さをイージング曲線に差し替える
 /* --- 文字の見た目（F2 P1-5：色・フチ・発光） --- */
-state.textStyle={color:"#1B6FA8",colorOverlay:"#E2447E",stroke:"#FFFFFF",strokeWidth:0.14,glow:false,glowColor:"#FFD64F",glowBlur:0.35};
+state.textStyle={color:"#1B6FA8",colorOverlay:"#E2447E",stroke:"#FFFFFF",strokeWidth:0.14,glow:false,glowColor:"#FFD64F",glowBlur:0.35,
+  emphColor:"#FF5DA2",emphScale:1.35}; // 14章・柱B：*キーワード*強調の色とスケール
 state.fxBlend=false; // ✨エフェクトを加算合成(lighter)で光らせるか。OFF＝従来通り
 function initFxBlendToggle(){
   const chk=$("fxBlendChk"); if(!chk) return;
@@ -2506,15 +2630,16 @@ function drawStickers(t){
     const sc=qi*pop*(0.55+qo*0.45);
     if(sc<=0.01) continue;
     // ---- ボイリング（手描きアニメの「線がプルプルする」現象）
-    // ★重要：なめらかなサイン波で揺らすと「ふわっと漂う」だけで、わちゃわちゃした手描き感は出ない。
-    //   本物は「毎秒8〜11コマでカクカク描き直される」ことで生まれる。だから時間を段階に量子化し、
-    //   段階が変わった瞬間にパッと別の位置・角度へ飛ばす。これが手描き感の正体。
-    const fps=8+Math.floor(hash01(sd*9.1)*4);   // 個体ごとに8〜11コマ/秒
-    const stp=Math.floor(t*fps);                 // 何コマ目か（同じコマの間は完全に静止）
-    const bx=(hash01(sd+stp*7.3)-0.5)*R*0.13;    // 位置 ±6.5%
-    const by=(hash01(sd+stp*11.7)-0.5)*R*0.13;
-    const brot=(hash01(sd+stp*13.1)-0.5)*0.10;   // 角度 ±2.9°
-    const bsc=1+(hash01(sd+stp*17.3)-0.5)*0.07;  // 大きさ ±3.5%
+    // ★時間ではなく「拍」に量子化する。固定フレームレート(毎秒8〜11回)だと曲のテンポと無関係に
+    //   細かく切り替わり、ユーザーには「震えている」ように見えてしまった（フィードバックで判明）。
+    //   拍ごと（個体によっては2拍ごと）に段階を進めることで、曲のリズムと連動した
+    //   意図的な動きに感じられるようにした。
+    const div=1+Math.floor(hash01(sd*9.1)*2);   // 個体ごとに1拍 or 2拍ごと
+    const stp=Math.floor(beatCount(t)/div);      // 何拍目か（同じ拍の間は完全に静止）
+    const bx=(hash01(sd+stp*7.3)-0.5)*R*0.11;    // 位置 ±5.5%
+    const by=(hash01(sd+stp*11.7)-0.5)*R*0.11;
+    const brot=(hash01(sd+stp*13.1)-0.5)*0.09;   // 角度 ±2.6°
+    const bsc=1+(hash01(sd+stp*17.3)-0.5)*0.06;  // 大きさ ±3%
     ctx.save();
     ctx.translate(x+bx,y+by);
     ctx.rotate((hash01(sd*5.5)-0.5)*0.5 + brot);
@@ -2565,6 +2690,17 @@ function drawSparks(dt){
   ctx.globalAlpha=1;
 }
 
+/* --- 一文字ずつのタイポグラフィ（柱B：14-4/13-3） ---
+   *ここ* で囲むと強調（拡大＋別色）。行の表示順（k）は崩れないので、
+   後述のcharTimes（ボーカル同期）やジッターと1文字ずつ対応させられる。 */
+function parseEmphasis(text){
+  const clean=[]; const mask=[]; let on=false;
+  for(const c of String(text)){
+    if(c==="*"){ on=!on; continue; }
+    clean.push(c); mask.push(on);
+  }
+  return {clean:clean.join(""), mask};
+}
 /* --- 歌詞描画 --- */
 function strokeFillC(c,fs,color,thickMul){
   const ts=state.textStyle;
@@ -2586,10 +2722,11 @@ function drawLyric(t,lineIdx){
   if(t>tEnd+FADE) return; // 最大表示を過ぎたら消える
   const fade=t>tEnd?1-(t-tEnd)/FADE:1;
 
+  const {clean:cleanText,mask:emphMask}=parseEmphasis(line.text);
   const style=styleOf(line);
   let lay, zone=null;
-  if(style==="arc") lay=arcLayout(line.text,t,lineIdx);
-  else{ zone=pickZone(t,lineIdx,style); lay=layoutLine(line.text,zone); }
+  if(style==="arc") lay=arcLayout(cleanText,t,lineIdx);
+  else{ zone=pickZone(t,lineIdx,style); lay=layoutLine(cleanText,zone); }
   const {positions,fs}=lay;
   const motion=motionOf(line);
   const n=positions.length;
@@ -2648,7 +2785,8 @@ function drawLyric(t,lineIdx){
   ctx.textBaseline="middle"; ctx.textAlign="center";
   for(let k=0;k<n;k++){
     const P=positions[k];
-    const tk=t0+k*interval;
+    // ★ボーカル同期（14-4）：charTimesが解析済みならそれを使う。未解析なら従来の均等割り
+    const tk=(line.charTimes&&line.charTimes.length===n)?t0+line.charTimes[k]:t0+k*interval;
     let draw=false,sc=1,dy=0,alpha=1;
     switch(motion){
       case "popin":{
@@ -2675,13 +2813,23 @@ function drawLyric(t,lineIdx){
         if(t>=t0){draw=true; alpha=lineAlpha;} break;
     }
     if(draw){
+      // ★一文字ずつのばらつき（柱B・13-2）：サイズ・回転・ベースラインを文字ごとに固定でずらす。
+      //   完全に決定論的（lineIdx・kのみで決まる）＝再現性を保つ
+      const jd=lineIdx*769+k*131;
+      const jrot=(hash01(jd*3.1)-0.5)*0.10;    // 回転 ±2.9°
+      const jsc=1+(hash01(jd*5.7)-0.5)*0.10;   // 大きさ ±5%
+      const jdy=(hash01(jd*7.3)-0.5)*fs*0.05;  // ベースライン ±5%
+      const emph=emphMask[k];
+      const emphSc=emph?(state.textStyle.emphScale||1.35):1;
+      const drawColor=emph?(state.textStyle.emphColor||color):color;
       ctx.save();
-      ctx.translate(P.x+lineDx,P.y+dy);
+      ctx.translate(P.x+lineDx,P.y+dy+jdy);
       if(P.rot!==undefined) ctx.rotate(P.rot);
       if(overlay) ctx.rotate(-0.05);
-      ctx.scale(sc,sc);
+      ctx.rotate(jrot);
+      ctx.scale(sc*jsc*emphSc,sc*jsc*emphSc);
       ctx.globalAlpha=alpha*fade;
-      strokeFillC(P.c,fs,color,overlay?1.57:1);
+      strokeFillC(P.c,fs,drawColor,overlay?1.57:(emph?1.15:1));
       ctx.restore();
     }
   }
