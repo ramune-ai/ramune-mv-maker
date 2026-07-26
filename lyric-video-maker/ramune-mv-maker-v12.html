@@ -146,12 +146,15 @@
       <label class="filebtn" style="background:#E4F3FC;color:var(--soda-deep);">📄 歌詞txtを選ぶ<input type="file" id="lyricTxtFile" accept=".txt,text/plain"></label>
       <span class="note">貼り付け・D&Dの代わりにファイル選択でも読み込めます</span>
     </div>
-    <textarea id="sectionText" style="min-height:100px;" placeholder="[Verse 1]&#10;ずっと しまってた 小さな宝物&#10;…（元の歌詞をぜんぶ貼り付け or .txtをドロップ）"></textarea>
+    <textarea id="sectionText" style="min-height:340px; font-size:1.05rem; line-height:1.7;" placeholder="[Verse 1]&#10;ずっと しまってた 小さな宝物&#10;…（元の歌詞をぜんぶ貼り付け or .txtをドロップ）"></textarea>
     <div class="row">
-      <button class="btn ghost" onclick="importSections()">セクションを読み取る</button>
+      <button class="btn ghost" onclick="importSections()">セクションを読み取る／歌詞を反映</button>
       <button class="btn pink" onclick="tapStart()">🎤 タップ打ち込み（JSONをここで作る）</button>
       <span class="note" id="sectionSummary"></span>
     </div>
+    <p class="note">✏️ ここで歌詞そのものを打ち直したり、強調したい単語を<code>*このように*</code>アスタリスクで
+      囲んでから「セクションを読み取る／歌詞を反映」を押すと、タイミングはそのままで歌詞の中身（誤字修正・強調マーク）
+      だけを反映できます。</p>
     <div id="tapPanel" class="hidden" style="text-align:center; border:2px solid #FFD3E6; border-radius:12px; padding:10px; background:#FFFBFD;">
       <div id="tapPrev" class="note" style="min-height:1.4em;"></div>
       <div id="tapCurr" style="font-size:1.35rem; font-weight:800; min-height:1.6em;"></div>
@@ -243,12 +246,13 @@
       <span class="note">これを過ぎるとふわっと消えます → 間奏は自動で歌詞なしに🫧</span>
     </div>
     <div class="row">
-      <label>文字送り
+      <label>文字送り（既定・フォールバック）
         <select id="charPace">
-          <option value="phrase">歌詞になるべく合わせる（1文字ずつシンクロ）</option>
+          <option value="phrase">1文字ずつ均等に出す</option>
           <option value="atonce">1行まとめてパッと表示</option>
         </select>
       </label>
+      <span class="note">↑の🎤ボーカル同期を実行した行は、そちらのタイミングが優先されます。この設定は未解析の行にだけ使われます。</span>
     </div>
 
     <h2 style="margin-top:18px;">🎞 文字演出＋素材タイムライン（行ごとにまとめて編集）</h2>
@@ -1202,6 +1206,8 @@ function normS(s){ // 表記ゆれに強い正規化（全半角・空白・絵�
     .replace(/[\s　]/g,"")
     .toLowerCase();
 }
+// ★強調マーク(*)は「どの行か」の判定には使わない（マークの有無で別の行だと誤認しないように）
+function matchKey(s){ return normS(String(s).replace(/\*/g,"")); }
 function importSections(){
   const raw=$("sectionText").value;
   if(!raw.trim()){ alert("[Verse 1]などが入った歌詞テキストを貼ってね"); return; }
@@ -1213,7 +1219,7 @@ function importSections(){
     if(cm){ credits.push({label:cm[1],value:cm[2].trim()}); continue; }
     const m=l.match(/^[\[［](.+?)[\]］]$/);
     if(m){ sec=m[1]; continue; }
-    seq.push({text:normS(l),sec,used:false});
+    seq.push({text:matchKey(l),raw:l,sec,used:false});
   }
   if(credits.length){
     state.credits=credits;
@@ -1225,14 +1231,14 @@ function importSections(){
   for(const line of state.lines){
     if(line.gap) continue;
     let jj=j;
-    while(jj<seq.length && seq[jj].text!==normS(line.text)) jj++;
-    if(jj<seq.length){ line.section=seq[jj].sec; seq[jj].used=true; j=jj+1; hit++; }
+    while(jj<seq.length && seq[jj].text!==matchKey(line.text)) jj++;
+    if(jj<seq.length){ line.section=seq[jj].sec; line.text=seq[jj].raw; seq[jj].used=true; j=jj+1; hit++; }
   }
   // 2周目：取りこぼしを順不同でマッチ（繰り返しサビ対策）
   for(const line of state.lines){
     if(line.gap||line.section) continue;
-    const m=seq.find(x=>x.text===normS(line.text));
-    if(m){ line.section=m.sec; hit++; }
+    const m=seq.find(x=>x.text===matchKey(line.text));
+    if(m){ line.section=m.sec; line.text=m.raw; hit++; }
   }
   addGapLines(); // 前奏・間奏・後奏の行番号を自動で振る
   renderLineList();
@@ -2530,6 +2536,23 @@ function energyAt(t){
    イントロ(0.20)=8個を1.0とすると Aメロ1.5倍・サビ3.3倍・ラスサビ3.8倍となり、GPT分析(14-2)と整合する */
 function stickerCount(e){ return Math.round(2+e*28); }
 function stkPool(e){ return e<0.30?STK_LOW:(e<0.70?STK_MID:STK_HIGH); }
+/* GPT分析（PLAN.md 14章追記）の「装飾別・推奨ボイリング量」をそのまま反映した表。
+   pos/rotDeg/scalePctは振幅、everyBeatsは何拍ごとに段階を進めるか（＝更新頻度）。
+   前回の一律値（位置±5.5%・角度±2.6°・大きさ±3%）は「2〜3倍揺れ過ぎ」との指摘を受けての差し替え。 */
+const STK_BOIL={
+  note:  {pos:0.025,rotDeg:1.0, scale:0.015, every:1},
+  note2: {pos:0.025,rotDeg:1.0, scale:0.015, every:1},
+  heart: {pos:0.020,rotDeg:0.65,scale:0.0075,every:2},
+  star:  {pos:0.020,rotDeg:0.5, scale:0.0075,every:2},
+  sparkle:{pos:0.015,rotDeg:0,  scale:0.005, every:4},
+  swirl: {pos:0.015,rotDeg:0.5, scale:0,     every:4}, // 手描き線
+  wave:  {pos:0.015,rotDeg:0.5, scale:0,     every:4}, // 手描き線
+  zigzag:{pos:0.015,rotDeg:0.5, scale:0,     every:4}, // 手描き線
+  burst: {pos:0.0075,rotDeg:0,  scale:0.0055,every:4}, // 集中線
+  puff:  {pos:0.025,rotDeg:0.8, scale:0.015, every:2}, // もこもこ
+  ring:  {pos:0.0115,rotDeg:0.5,scale:0.0075,every:4}, // 大きいステッカー相当
+};
+function boilOf(kind){ return STK_BOIL[kind]||STK_BOIL.ring; }
 
 function drawStickerShape(kind,R){
   ctx.lineWidth=Math.max(2,R*0.17); ctx.lineCap="round"; ctx.lineJoin="round";
@@ -2632,14 +2655,14 @@ function drawStickers(t){
     // ---- ボイリング（手描きアニメの「線がプルプルする」現象）
     // ★時間ではなく「拍」に量子化する。固定フレームレート(毎秒8〜11回)だと曲のテンポと無関係に
     //   細かく切り替わり、ユーザーには「震えている」ように見えてしまった（フィードバックで判明）。
-    //   拍ごと（個体によっては2拍ごと）に段階を進めることで、曲のリズムと連動した
-    //   意図的な動きに感じられるようにした。
-    const div=1+Math.floor(hash01(sd*9.1)*2);   // 個体ごとに1拍 or 2拍ごと
-    const stp=Math.floor(beatCount(t)/div);      // 何拍目か（同じ拍の間は完全に静止）
-    const bx=(hash01(sd+stp*7.3)-0.5)*R*0.11;    // 位置 ±5.5%
-    const by=(hash01(sd+stp*11.7)-0.5)*R*0.11;
-    const brot=(hash01(sd+stp*13.1)-0.5)*0.09;   // 角度 ±2.6°
-    const bsc=1+(hash01(sd+stp*17.3)-0.5)*0.06;  // 大きさ ±3%
+    //   さらにGPT分析（14章追記）により、揺れ幅そのものも「2〜3倍揺れ過ぎ」と判明したため、
+    //   種類ごとの推奨値（STK_BOIL）に差し替えた。値が0の種類（集中線等）は振動させない。
+    const bo=boilOf(kind);
+    const stp=Math.floor(beatCount(t)/bo.every); // 何拍目か（同じ拍の間は完全に静止）
+    const bx=(hash01(sd+stp*7.3)-0.5)*R*bo.pos*2;
+    const by=(hash01(sd+stp*11.7)-0.5)*R*bo.pos*2;
+    const brot=(hash01(sd+stp*13.1)-0.5)*(bo.rotDeg*Math.PI/180)*2;
+    const bsc=1+(hash01(sd+stp*17.3)-0.5)*bo.scale*2;
     ctx.save();
     ctx.translate(x+bx,y+by);
     ctx.rotate((hash01(sd*5.5)-0.5)*0.5 + brot);
@@ -2798,10 +2821,13 @@ function drawLyric(t,lineIdx){
           sc=(1+0.5*(1-p)*Math.sin(p*Math.PI))*(1+(bounce-0.5)*0.05);
           alpha=Math.max(0,Math.min(1,p*1.6)); dy=-bounce*fs*0.22;} break;
       case "fuwa":{
-        const p=shapeP(Math.min(1,(t-t0)/0.5));
+        // ★以前は行全体がt0基準で一斉に出ていた＝charTimes(ボーカル同期)が効かなかった。
+        //   tk基準にして、popin/bounce/burstと同じく1文字ずつ出るようにした
+        const p=shapeP(Math.min(1,(t-tk)/0.5));
         if(p>0){draw=true;alpha=Math.max(0,Math.min(1,p));dy=Math.sin(t*1.6+k*0.45)*fs*0.10;} break;}
       case "zoom":{
-        const p=shapeP(Math.min(1,(t-t0)/0.6));
+        // ★出現の基準だけtkに変更（じわ拡大そのものは行全体の進行＝t0基準のまま）
+        const p=shapeP(Math.min(1,(t-tk)/0.6));
         if(p>0){draw=true;alpha=Math.max(0,Math.min(1,p));sc=0.96+0.10*shapeP(Math.min(1,(t-t0)/(tEnd-t0)));} break;}
       case "burst":
         if(t>=tk){draw=true;const p=shapeP(Math.min(1,(t-tk)/POP));
