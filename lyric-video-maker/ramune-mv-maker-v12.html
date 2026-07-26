@@ -125,6 +125,11 @@
       <span class="filename" id="jsonName">未選択</span>
       <span class="note">🎤タップ打ち込みで新規作成もOK（下）</span>
     </div>
+    <div class="row">
+      <label class="filebtn">🎤 ボーカルのみの音源（任意・解析用）<input type="file" id="vocalFile" accept="audio/*"></label>
+      <span class="filename" id="vocalName">未選択</span>
+      <span class="note">再生には使いません。歌詞タイミングの解析だけに使います。あると精度が大きく上がります</span>
+    </div>
     <h3 style="margin-top:20px;">🔤 フォント（お好みで）</h3>
     <div class="row">
       <label>フォント
@@ -148,9 +153,8 @@
     </div>
     <textarea id="sectionText" placeholder="[Verse 1]&#10;ずっと しまってた 小さな宝物&#10;…（元の歌詞をぜんぶ貼り付け or .txtをドロップ）"
       style="min-height:340px; font-size:1.05rem; line-height:1.7;
-             width:min(96vw,2200px); max-width:96vw; position:relative; left:50%; transform:translateX(-50%);"></textarea>
+             width:1400px; max-width:calc(100vw - 40px);"></textarea>
     <div class="row">
-      <button class="btn ghost" onclick="importSections()">セクションを読み取る／歌詞を反映</button>
       <button class="btn pink" onclick="tapStart()">🎤 タップ打ち込み（JSONをここで作る）</button>
       <button class="btn ghost" id="snapBtn" onclick="snapLyricTiming()">🎯 行のタイミングを歌に吸着</button>
       <span class="note" id="sectionSummary"></span>
@@ -158,8 +162,7 @@
     <p class="note">🎯は、タップ打ち込みや読み込んだJSONの各行を、±0.3秒の範囲で「本当の歌い出し」に寄せます。
       手で押したときの早すぎ・遅すぎを機械が直すので、タップのあとに1回押すのがおすすめです。</p>
     <p class="note">✏️ ここで歌詞そのものを打ち直したり、強調したい単語を<code>*このように*</code>アスタリスクで
-      囲んでから「セクションを読み取る／歌詞を反映」を押すと、タイミングはそのままで歌詞の中身（誤字修正・強調マーク）
-      だけを反映できます。</p>
+      囲むと、入力が止まって少し経つと自動で反映されます（タイミングはそのまま、中身だけ差し替わります）。</p>
     <div id="tapPanel" class="hidden" style="text-align:center; border:2px solid #FFD3E6; border-radius:12px; padding:10px; background:#FFFBFD;">
       <div id="tapPrev" class="note" style="min-height:1.4em;"></div>
       <div id="tapCurr" style="font-size:1.35rem; font-weight:800; min-height:1.6em;"></div>
@@ -350,7 +353,7 @@
         <input type="range" id="stickerAmt" min="0.4" max="2" step="0.1" value="1" style="width:120px; vertical-align:middle;">
       </label>
       <label style="flex:0 0 auto;">揺れ
-        <input type="range" id="stickerBoil" min="0" max="8" step="0.5" value="3" style="width:120px; vertical-align:middle;">
+        <input type="range" id="stickerBoil" min="0" max="20" step="0.5" value="6" style="width:120px; vertical-align:middle;">
       </label>
       <span class="note" id="stickerStatus"></span>
       <span class="note">セクションの盛り上がりに応じて自動で増減します（イントロは控えめ／サビは賑やか／落ちサビは静か）</span>
@@ -521,6 +524,16 @@ $("audioFile").addEventListener("change",e=>{
   audio.src=URL.createObjectURL(f);
   audioBlob=f; saveAsset("audio",f.name,f);
   state.audioName=f.name; $("audioName").textContent=f.name;
+  resetVocalAnalysisCache(); // 再生用の音源が変わったら解析キャッシュも作り直す
+});
+/* ボーカルのみの音源（任意）。再生には使わず、歌詞タイミングの解析精度を上げるためだけに使う。
+   伴奏と声が同じ帯域を占める問題（16-5で判明）を、素材の時点で解決する。 */
+let vocalBlob=null;
+$("vocalFile").addEventListener("change",e=>{
+  const f=e.target.files[0]; if(!f) return;
+  vocalBlob=f; saveAsset("vocal",f.name,f);
+  $("vocalName").textContent=f.name;
+  resetVocalAnalysisCache();
 });
 $("jsonFile").addEventListener("change",e=>{
   const f=e.target.files[0]; if(!f) return;
@@ -617,6 +630,7 @@ setInterval(()=>{ // 4秒ごとに自動保存
     for(const a of all){
       const f=new File([a.blob],a.name,{type:a.blob.type});
       if(a.kind==="audio"){ audio.src=URL.createObjectURL(f); audioBlob=f; state.audioName=a.name; $("audioName").textContent=a.name+"（復元）"; }
+      else if(a.kind==="vocal"){ vocalBlob=f; $("vocalName").textContent=a.name+"（復元）"; }
       else if(a.kind==="bg") addBgFiles([f],true);
       else if(a.kind==="char") addCharFiles([f],true);
     }
@@ -801,6 +815,13 @@ function loadLyricTxt(f){
 $("lyricTxtFile").addEventListener("change",e=>{
   const f=e.target.files[0]; if(f) loadLyricTxt(f);
   e.target.value="";
+});
+/* ★セクション読み取り／歌詞反映は自動化（負荷は文字列比較のみでミリ秒未満のため）。
+   打鍵のたびではなく、入力が0.5秒止まってから反映する（変換中の未確定文字列で誤爆しないため） */
+let sectionTextDebounce=null;
+$("sectionText").addEventListener("input",()=>{
+  clearTimeout(sectionTextDebounce);
+  sectionTextDebounce=setTimeout(()=>{ if($("sectionText").value.trim()) importSections(); },500);
 });
 
 /* --- ドラッグ＆ドロップ --- */
@@ -1558,11 +1579,13 @@ async function autoBPM(){
    ③ 日本語をモーラ（拍）単位にまとめてから割り当てる。
    ④ 割り当ては貪欲法ではなく動的計画法で、順序を保ったまま全体の誤差が最小になる組を選ぶ。 */
 let _vocalDecoded=null, _vocalEnv=null;
+function resetVocalAnalysisCache(){ _vocalDecoded=null; _vocalEnv=null; } // 音源の差し替え時に呼ぶ
 async function decodedAudioBuffer(){
   if(_vocalDecoded) return _vocalDecoded;
-  if(!audioBlob) return null;
+  const src=vocalBlob||audioBlob; // ★ボーカルのみの音源があればそちらを解析に使う（16-8）
+  if(!src) return null;
   ensureAudioGraph();
-  const buf=await audioBlob.arrayBuffer();
+  const buf=await src.arrayBuffer();
   _vocalDecoded=await actx.decodeAudioData(buf);
   return _vocalDecoded;
 }
@@ -2000,7 +2023,7 @@ document.addEventListener("DOMContentLoaded",initFxBlendToggle);
 /* --- デコステッカー（14章）のON/OFFと量 --- */
 state.stickerOn=true;   // 既定ON。OFFにすれば従来の見た目と直接見比べられる
 state.stickerAmt=1.0;   // 量の倍率（0.4〜2.0）。曲やテーマに合わせて手で調整できる余地
-state.stickerBoil=3;    // 揺れの強さの倍率（0〜8）。種類ごとの比率は保ったまま全体を強める
+state.stickerBoil=6;    // 揺れの強さの倍率（0〜20）。種類ごとの比率は保ったまま全体を強める
 function initStickerToggle(){
   const chk=$("stickerChk");
   if(chk){
@@ -2802,10 +2825,13 @@ function drawStickers(t){
     // ★倍率(state.stickerBoil)で全体の揺れ幅を調整できる。GPTの推奨値は実際のMVの数値だが、
     //   プレビューの表示サイズでは「動いて見えない」というフィードバックがあったため、
     //   種類ごとの比率は保ったまま、全体を掛け算で強められるようにした。
-    const bo=boilOf(kind), bm=(state.stickerBoil==null?3:state.stickerBoil);
+    const bo=boilOf(kind), bm=(state.stickerBoil==null?6:state.stickerBoil);
     const stp=Math.floor(beatCount(t)/bo.every); // 何拍目か（同じ拍の間は完全に静止）
-    const bx=(hash01(sd+stp*7.3)-0.5)*R*bo.pos*2*bm;
-    const by=(hash01(sd+stp*11.7)-0.5)*R*bo.pos*2*bm;
+    // ★小さいステッカーはR*bo.pos自体が小さく、倍率をかけても絶対量として動いて見えないことがあった。
+    //   画面高さの0.4%を下限にして、種類ごとの比率は保ったまま最低限は必ず動くようにした
+    const posAmp=Math.max(R*bo.pos*bm, CH*0.004*Math.min(1,bm));
+    const bx=(hash01(sd+stp*7.3)-0.5)*posAmp*2;
+    const by=(hash01(sd+stp*11.7)-0.5)*posAmp*2;
     const brot=(hash01(sd+stp*13.1)-0.5)*(bo.rotDeg*Math.PI/180)*2*bm;
     const bsc=1+(hash01(sd+stp*17.3)-0.5)*bo.scale*2*bm;
     ctx.save();
