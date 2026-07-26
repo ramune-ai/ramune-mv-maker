@@ -1273,146 +1273,136 @@ function updateTicks(){ // シークバーのセクション目盛り
 /* セクション切替オーバーレイ演出（べた塗りPOP：一瞬画面を埋め尽くす） */
 const TRANS_COLORS=["#FF8FC0","#63C4FF","#FFD64F","#7FE0A8","#B79BFF"];
 function transColor(i){ return TRANS_COLORS[((i%TRANS_COLORS.length)+TRANS_COLORS.length)%TRANS_COLORS.length]; }
+/* ================= セクション切替演出（14-3で全面改修） =================
+   旧実装の問題：画面全体を TRANS_COLORS のべた塗り(baseCover)で覆っていた。
+   その色は背景画像とも曲の世界観とも無関係な固定パレットで、
+   しかも 0.85秒と、実際のMV（0.15〜0.35秒）の2.5〜5倍も遅かった。
+   → 「べた塗りで隠して、開けたら次の背景」をやめ、
+      「次の背景そのものを、形で切り抜きながら見せる」方式に作り替えた。
+      関係ない色は一切出ない。形（丸・ダイヤ・市松…）は従来のまま流用している。 */
+const TRANS_DUR={ // 14-3：実際のMVは0.15〜0.35秒。派手なものほど速い
+  white:0.14, circle:0.18, diag:0.20, rings:0.22,
+  checker:0.24, stripes:0.24, diamonds:0.24, bubbles:0.28, cloud:0.30, bubbleup:0.30 };
 function drawSectionFx(t){
   const bs=sectionBoundaries();
   for(let bi=0;bi<bs.length;bi++){
     const b=bs[bi];
     const tr=b.line.trans;
     if(!tr||tr==="none") continue;
-    const st=lineTime(b.line)-0.55, DUR=0.85;
+    const DUR=TRANS_DUR[tr]||0.24;
+    // 演出は「歌詞が始まる瞬間ちょうどに完了する」。完了時の絵＝次の背景なので継ぎ目が出ない
+    const st=lineTime(b.line)-DUR;
     const p=(t-st)/DUR;
     if(p<0||p>1) continue;
-    const cov=Math.sin(p*Math.PI); // 0→1→0（画面を覆って晴れる）
-    // ★下地べた塗り：ピーク付近は完全に画面を覆う（隙間から背景転換が見えない）
-    const baseA=Math.max(0,Math.min(1,(cov-0.42)/0.22));
-    const baseCover=(color)=>{ if(baseA>0){ ctx.globalAlpha=baseA; ctx.fillStyle=color; ctx.fillRect(0,0,CW,CH); ctx.globalAlpha=1; } };
+    const E=x=>1-Math.pow(1-Math.max(0,Math.min(1,x)),2.2); // なめらかに減速しながら開ききる
+    const nextBg=pickBg(b.idx); // ★これから出てくる背景。これで塗る＝無関係な色が出ない
+    // 形で切り抜いて「次の背景」を見せる
+    const paint=(pathFn,alpha)=>{
+      ctx.save();
+      if(alpha!==undefined) ctx.globalAlpha=alpha;
+      ctx.beginPath(); pathFn(); ctx.clip();
+      drawBgImage(nextBg,t,b.idx);
+      ctx.restore();
+    };
+    const rim=(pathFn,w)=>{ // 形のふちに白い線を足して「手描きの切り抜き」らしくする
+      ctx.save(); ctx.globalAlpha=0.55; ctx.strokeStyle="#fff"; ctx.lineWidth=w||3;
+      ctx.beginPath(); pathFn(); ctx.stroke(); ctx.restore();
+    };
+    const D=Math.hypot(CW,CH);
 
-    if(tr==="white"){
-      ctx.globalAlpha=cov; ctx.fillStyle="#fff"; ctx.fillRect(0,0,CW,CH);
+    if(tr==="white"){ // ホワイトフラッシュ：白の一瞬の中でカットが入れ替わる（14-3：実際は1〜3フレーム）
+      if(p>0.5) paint(()=>ctx.rect(0,0,CW,CH));
+      ctx.globalAlpha=Math.sin(p*Math.PI)*0.95;
+      ctx.fillStyle="#fff"; ctx.fillRect(0,0,CW,CH);
+      ctx.globalAlpha=1;
 
-    }else if(tr==="rings"){ // 多重丸：色付きリングがドーナツ状に埋め尽くす
-      baseCover(transColor(bi));
-      const R=Math.hypot(CW,CH)*0.62;
-      for(let i=5;i>=0;i--){
-        const pp=Math.max(0,Math.min(1,(p-i*0.07)/0.6));
-        const r=R*Math.sin(pp*Math.PI);
-        if(r<=0) continue;
-        ctx.globalAlpha=1;
-        ctx.fillStyle=transColor(bi+i);
-        ctx.beginPath(); ctx.arc(CW/2,CH/2,r,0,6.29); ctx.fill();
+    }else if(tr==="circle"){ // 円ワイプ：真ん中から新しい景色が開く
+      const r=D*0.62*E(p);
+      const path=()=>ctx.arc(CW/2,CH/2,r,0,6.29);
+      paint(path); rim(path,4);
+
+    }else if(tr==="rings"){ // 多重丸：本体の円＋外側に追いかけるリング
+      const r=D*0.62*E(p);
+      paint(()=>ctx.arc(CW/2,CH/2,r,0,6.29));
+      for(let i=1;i<=3;i++){
+        const rr=r+D*0.05*i*(1-p);
+        if(rr<=0) continue;
+        ctx.save(); ctx.globalAlpha=(1-p)*0.5; ctx.strokeStyle="#fff"; ctx.lineWidth=Math.max(2,D*0.012*(1-p));
+        ctx.beginPath(); ctx.arc(CW/2,CH/2,rr,0,6.29); ctx.stroke(); ctx.restore();
       }
 
-    }else if(tr==="circle"){ // 円ワイプ：べた塗り円がドン→スッ
-      const r=Math.hypot(CW,CH)*0.62*cov;
-      ctx.globalAlpha=1; ctx.fillStyle=transColor(bi);
-      ctx.beginPath(); ctx.arc(CW/2,CH/2,r,0,6.29); ctx.fill();
-      ctx.fillStyle=transColor(bi+1);
-      ctx.beginPath(); ctx.arc(CW/2,CH/2,r*0.55,0,6.29); ctx.fill();
-
-    }else if(tr==="stripes"){ // 多重ボーダー：色付きバーが左右から差し込んで埋める
-      baseCover(transColor(bi+1));
+    }else if(tr==="stripes"){ // 多重ボーダー：帯が左右交互に差し込んで埋まる
       const N=6, bh=CH/N;
       for(let i=0;i<N;i++){
-        const pp=Math.max(0,Math.min(1,(p-i*0.05)/0.6));
-        const w=CW*Math.sin(pp*Math.PI);
-        if(w<=0) continue;
-        ctx.globalAlpha=1;
-        ctx.fillStyle=transColor(bi+i);
-        const x=(i%2===0)?0:CW-w;
-        ctx.fillRect(x,i*bh,w,bh+1);
+        const pp=E((p-i*0.05)/0.75); // i=5・p=1 でちょうど1.0＝隙間なく閉じる
+        if(pp<=0) continue;
+        const w=CW*pp, x=(i%2===0)?0:CW-w;
+        paint(()=>ctx.rect(x,i*bh,w,bh+1));
       }
 
-    }else if(tr==="diamonds"){ // 多重ダイヤ：色付きダイヤが敷き詰め
-      baseCover(transColor(bi+2));
-      const cols=6, rows=4, R=Math.max(CW/cols,CH/rows)*1.05;
+    }else if(tr==="diamonds"){ // 多重ダイヤ：ダイヤが敷き詰まって埋まる
+      const cols=6, rows=4, R=Math.max(CW/cols,CH/rows)*1.15;
       for(let j=0;j<rows;j++)for(let i=0;i<cols;i++){
-        const d=hash01(i*7+j*13)*0.22;
-        const pp=Math.max(0,Math.min(1,(p-d)/0.62));
-        const r=R*Math.sin(pp*Math.PI);
-        if(r<=0) continue;
-        const x=(i+0.5)/cols*CW, y=(j+0.5)/rows*CH;
-        ctx.globalAlpha=1;
-        ctx.fillStyle=transColor(bi+i+j*3);
-        ctx.beginPath();
-        ctx.moveTo(x,y-r); ctx.lineTo(x+r,y); ctx.lineTo(x,y+r); ctx.lineTo(x-r,y); ctx.closePath(); ctx.fill();
+        const pp=E((p-hash01(i*7+j*13)*0.25)/0.75);
+        if(pp<=0) continue;
+        const r=R*pp, x=(i+0.5)/cols*CW, y=(j+0.5)/rows*CH;
+        const path=()=>{ ctx.moveTo(x,y-r); ctx.lineTo(x+r,y); ctx.lineTo(x,y+r); ctx.lineTo(x-r,y); ctx.closePath(); };
+        paint(path);
       }
 
-    }else if(tr==="checker"){ // チェックタイル：2色の市松がパタパタ埋め尽くす
-      baseCover(transColor(bi));
-      const cols=8, rows=5;
-      const cw2=CW/cols, chh=CH/rows;
+    }else if(tr==="checker"){ // チェックタイル：市松がパタパタ開く
+      const cols=8, rows=5, cw2=CW/cols, chh=CH/rows;
       for(let j=0;j<rows;j++)for(let i=0;i<cols;i++){
-        const d=((i+j)%2)*0.10+hash01(i*3+j*7)*0.08;
-        const pp=Math.max(0,Math.min(1,(p-d)/0.62));
-        const sc2=Math.sin(pp*Math.PI);
-        if(sc2<=0) continue;
-        ctx.globalAlpha=1;
-        ctx.fillStyle=transColor(bi+((i+j)%2)*2);
-        const w2=cw2*sc2, h2=chh*sc2;
-        ctx.fillRect((i+0.5)*cw2-w2/2,(j+0.5)*chh-h2/2,w2,h2);
+        const d=((i+j)%2)*0.10+hash01(i*3+j*7)*0.12;
+        const pp=E((p-d)/0.78);
+        if(pp<=0) continue;
+        const w2=cw2*pp*1.02, h2=chh*pp*1.02;
+        paint(()=>ctx.rect((i+0.5)*cw2-w2/2,(j+0.5)*chh-h2/2,w2,h2));
       }
 
-    }else if(tr==="diag"){ // 斜めスライド：べた塗りの帯2本が斜めに走り抜ける
-      baseCover(transColor(bi));
+    }else if(tr==="diag"){ // 斜めスライド：新しい景色が斜めに滑り込む
+      const q=E(p);
       ctx.save();
-      ctx.translate(CW/2,CH/2);
-      ctx.rotate(-0.45);
-      const L=Math.hypot(CW,CH);
-      const x1=-L+(p*2.4)*L;
-      const x2=-L+(Math.max(0,p-0.12)*2.4)*L;
-      ctx.globalAlpha=1;
-      ctx.fillStyle=transColor(bi);
-      ctx.fillRect(x1-L*0.4,-L,L*0.55,L*2);
-      ctx.fillStyle=transColor(bi+2);
-      ctx.fillRect(x2-L*0.75,-L,L*0.3,L*2);
+      ctx.translate(CW/2,CH/2); ctx.rotate(-0.45);
+      const L=Math.hypot(CW,CH)*1.4;
+      ctx.beginPath(); ctx.rect(-L, -L, L+L*2*q, L*2); ctx.clip();
+      ctx.rotate(0.45); ctx.translate(-CW/2,-CH/2);
+      drawBgImage(nextBg,t,b.idx);
       ctx.restore();
 
-    }else if(tr==="bubbleup"){ // 下からバブル：順々にぼこぼこ上がって画面を埋める
-      baseCover(transColor(bi));
-      for(let i=0;i<18;i++){
-        const h1=hash01(i*3+2),h2=hash01(i*7+5);
-        const d=(i/18)*0.45; // ★1個ずつ順々に
-        const pp=Math.max(0,Math.min(1,(p-d)/0.55));
-        if(pp<=0||pp>=1) continue;
-        const r=CH*(0.12+h1*0.20)*(0.5+pp*0.8);
-        const x=((i*0.618)%1)*CW+Math.sin(pp*5+i)*CW*0.02;
-        const y=CH+r-(CH+r*2)*pp;
-        ctx.globalAlpha=1;
-        ctx.fillStyle=transColor(bi+i);
-        ctx.beginPath(); ctx.arc(x,y,r,0,6.29); ctx.fill();
-        ctx.fillStyle="rgba(255,255,255,.55)";
-        ctx.beginPath(); ctx.arc(x-r*0.3,y-r*0.3,r*0.28,0,6.29); ctx.fill();
+    }else if(tr==="bubbleup"){ // 下からバブル：泡が湧き上がって埋まる
+      const q=E(p), line=CH*(1-q);
+      paint(()=>ctx.rect(0,line,CW,CH-line+1)); // 下から上がってくる水面
+      for(let i=0;i<14;i++){
+        const r=CH*(0.10+hash01(i*3+2)*0.16)*q;
+        if(r<=0) continue;
+        const x=((i*0.618)%1)*CW, y=line-r*0.55+Math.sin(q*4+i)*CH*0.03;
+        const path=()=>ctx.arc(x,y,r,0,6.29);
+        paint(path); rim(path,2.5);
       }
 
-    }else if(tr==="cloud"){ // 雲ポフっ：もこもこが「ポフッポフッ」と順々に出て晴れる
-      baseCover(transColor(bi+1));
+    }else if(tr==="cloud"){ // 雲ポフっ：もこもこが順々に出て埋まる
       const N=12;
       for(let i=0;i<N;i++){
-        const h1=hash01(i*3+1),h2=hash01(i*5+2);
-        const d=(i/N)*0.4; // ★順々にポフッ
-        const pp=Math.max(0,Math.min(1,(p-d)/0.6));
-        const x=h1*CW, y=h2*CH;
-        const r=Math.max(CW,CH)*0.30*Math.sin(pp*Math.PI)*(0.7+hash01(i)*0.6);
-        if(r<=0) continue;
-        ctx.globalAlpha=1;
-        ctx.fillStyle="#fff";
-        ctx.beginPath();
-        ctx.arc(x-r*.5,y+r*.08,r*.55,0,6.29);
-        ctx.arc(x,y-r*.2,r*.68,0,6.29);
-        ctx.arc(x+r*.5,y+r*.08,r*.55,0,6.29);
-        ctx.fill();
+        const pp=E((p-(i/N)*0.30)/0.72);
+        if(pp<=0) continue;
+        const x=hash01(i*3+1)*CW, y=hash01(i*5+2)*CH;
+        const r=Math.max(CW,CH)*0.42*pp*(0.75+hash01(i)*0.5);
+        const path=()=>{
+          ctx.moveTo(x-r*.5+r*.55,y+r*.08); ctx.arc(x-r*.5,y+r*.08,r*.55,0,6.29);
+          ctx.moveTo(x+r*.68,y-r*.2);       ctx.arc(x,y-r*.2,r*.68,0,6.29);
+          ctx.moveTo(x+r*.5+r*.55,y+r*.08); ctx.arc(x+r*.5,y+r*.08,r*.55,0,6.29); };
+        paint(path); rim(path,3);
       }
 
-    }else if(tr==="bubbles"){ // 泡ワイプ：べた塗りサークルが順々に弾けて埋める
-      baseCover(transColor(bi));
-      for(let i=0;i<12;i++){
-        const h1=hash01(i*3+2),h2=hash01(i*7+5);
-        const pp=Math.max(0,Math.min(1,(p-(i/12)*0.4)/0.55));
-        const r=Math.max(CW,CH)*0.22*Math.sin(pp*Math.PI);
-        if(r<=0) continue;
-        ctx.globalAlpha=1;
-        ctx.fillStyle=transColor(bi+i);
-        ctx.beginPath(); ctx.arc(h1*CW,h2*CH,r,0,6.29); ctx.fill();
+    }else if(tr==="bubbles"){ // 泡ワイプ：泡が次々弾けて埋まる
+      for(let i=0;i<14;i++){
+        const pp=E((p-(i/14)*0.32)/0.70);
+        if(pp<=0) continue;
+        const r=Math.max(CW,CH)*0.34*pp;
+        const x=hash01(i*3+2)*CW, y=hash01(i*7+5)*CH;
+        const path=()=>ctx.arc(x,y,r,0,6.29);
+        paint(path); rim(path,2.5);
       }
     }
     ctx.globalAlpha=1;
@@ -2102,7 +2092,11 @@ function visibleChars(t,lineIdx){
   return [{ch,ci:0,startTime,ovr:{pos:r.pos,size:r.size,cmo:r.cmo}}];
 }
 let charRects=[]; // このフレームでキャラが実際に占めた矩形（字幕よけ用）
-function drawChars(t,lineIdx){
+/* キャラの「配置計算」と「描画」を分離してある。
+   理由：デコステッカーをキャラより後ろのレイヤーに描きつつ、
+   キャラの顔にかからないよう避けたい。そのためには描く前に位置が要る。 */
+function layoutChars(t,lineIdx){
+  const list=[];
   charRects=[];
   const bp=beatPhase(t);
   const bounce=Math.abs(Math.sin(bp*Math.PI));
@@ -2136,13 +2130,27 @@ function drawChars(t,lineIdx){
       yBob=-Math.sin(t*0.9+ci*1.7)*CH*0.018;
     }
     charRects.push({x,y,w,h,pos:cpos});
+    list.push({img,x,y,w,h,yBob,appear,squash,alpha});
+  }
+  return list;
+}
+function drawChars(list){
+  for(const c of list){
     ctx.save();
-    ctx.globalAlpha=alpha;
-    ctx.translate(x+w/2, y+h+yBob);
-    ctx.scale(appear/Math.sqrt(squash), appear*squash);
-    ctx.drawImage(img,-w/2,-h,w,h);
+    ctx.globalAlpha=c.alpha;
+    ctx.translate(c.x+c.w/2, c.y+c.h+c.yBob);
+    ctx.scale(c.appear/Math.sqrt(c.squash), c.appear*c.squash);
+    ctx.drawImage(c.img,-c.w/2,-c.h,c.w,c.h);
     ctx.restore();
   }
+}
+/* キャラの「顔・主役の部分」＝矩形の上半分の中央寄り。ここにはデコを置かない。
+   端に重なるのはOKという方針なので、左右の余白と足元は避けない。 */
+function charKeepOut(){
+  return charRects.map(r=>({
+    x0:r.x+r.w*0.14, x1:r.x+r.w*0.86,
+    y0:r.y-r.h*0.02, y1:r.y+r.h*0.52
+  }));
 }
 
 /* --- 字幕レイアウト --- */
@@ -2370,7 +2378,7 @@ function transActive(t){ // 切替演出が画面を覆っている最中か
    ・ボイリング：全ステッカーが常に微振動する（14-5「完全静止は避ける」＝手描き感の肝）
 */
 const STK_PASTEL=["#FF9EC4","#7FD4FF","#FFE071","#9BE8B4","#C3AEFF","#FFB38A","#FF7FA8","#6FE3D6"];
-const STK_LOW =["note","dots","wave","ring","heart"];
+const STK_LOW =["note","wave","ring","heart","swirl"];
 const STK_MID =["note","note2","heart","swirl","puff","sparkle","ring","wave"];
 const STK_HIGH=["sparkle","star","zigzag","burst","note2","swirl","heart","puff"];
 let _energyByLine=null;
@@ -2453,9 +2461,6 @@ function drawStickerShape(kind,R){
       for(let i=0;i<=32;i++){ const x=-R+2*R*i/32, y=Math.sin(i/32*P*3)*R*0.32;
         i?ctx.lineTo(x,y):ctx.moveTo(x,y); }
       ctx.stroke(); break;
-    case "dots":
-      for(let i=0;i<3;i++){ ctx.beginPath();
-        ctx.arc(-R*0.62+i*R*0.62, Math.sin(i*2.1)*R*0.26, R*0.22,0,6.29); ctx.fill(); } break;
     default: // ring
       ctx.beginPath(); ctx.arc(0,0,R*0.82,0,6.29); ctx.stroke(); break;
   }
@@ -2465,6 +2470,7 @@ function drawStickers(t){
   const e=energyAt(t), pool=stkPool(e);
   const K=Math.max(0,Math.round(stickerCount(e)*(state.stickerAmt||1)));
   const S=Math.min(CW,CH);
+  const keepOut=charKeepOut();
   for(let j=0;j<K;j++){
     // ---- スロット固有（生まれ変わっても変わらない）：大きさと寿命を相関させる
     const sf=hash01(j*1.7+3.3);            // 0..1
@@ -2482,20 +2488,37 @@ function drawStickers(t){
     // 中央（歌詞の居場所）を避けて外周寄りに置く
     const ang=hash01(sd*2.1)*6.283, rad=0.60+hash01(sd*3.7)*0.42;
     const m=S*0.07;
-    const x=Math.max(m,Math.min(CW-m, CW/2+Math.cos(ang)*rad*CW*0.50));
-    const y=Math.max(m,Math.min(CH-m, CH/2+Math.sin(ang)*rad*CH*0.52));
+    let x=Math.max(m,Math.min(CW-m, CW/2+Math.cos(ang)*rad*CW*0.50));
+    let y=Math.max(m,Math.min(CH-m, CH/2+Math.sin(ang)*rad*CH*0.52));
+    // キャラの顔・主役の部分を避ける（端に重なるのはOK）。近い方の横に押し出す
+    for(const k of keepOut){
+      if(x+R*0.7>k.x0 && x-R*0.7<k.x1 && y+R*0.7>k.y0 && y-R*0.7<k.y1){
+        const toL=k.x0-R*0.75, toR=k.x1+R*0.75;
+        x=(Math.abs(x-toL)<Math.abs(x-toR))?toL:toR;
+        if(x<m||x>CW-m) y=k.y1+R*0.8; // 横に逃げ場がなければ下（足元）へ
+        x=Math.max(m,Math.min(CW-m,x));
+        y=Math.max(m,Math.min(CH-m,y));
+      }
+    }
     // ---- 出現0.12秒／退場0.20秒（14-5）。退場は「縮小＋透明化」
     const qi=Math.min(1,q*life/0.12), qo=Math.min(1,(1-q)*life/0.20);
     const pop=1+0.22*Math.sin(Math.min(1,qi)*Math.PI)*(1-qi*0.35); // ぷるっと出る
     const sc=qi*pop*(0.55+qo*0.45);
     if(sc<=0.01) continue;
-    // ---- ボイリング：周期2〜4秒・振幅3%・回転±0.8°（14-5）
-    const per=2+hash01(sd*6.1)*2, bph=hash01(sd*7.3)*6.283, w=6.283/per;
-    const bx=Math.sin(t*w+bph)*R*0.03, by=Math.cos(t*w*0.83+bph)*R*0.03;
+    // ---- ボイリング（手描きアニメの「線がプルプルする」現象）
+    // ★重要：なめらかなサイン波で揺らすと「ふわっと漂う」だけで、わちゃわちゃした手描き感は出ない。
+    //   本物は「毎秒8〜11コマでカクカク描き直される」ことで生まれる。だから時間を段階に量子化し、
+    //   段階が変わった瞬間にパッと別の位置・角度へ飛ばす。これが手描き感の正体。
+    const fps=8+Math.floor(hash01(sd*9.1)*4);   // 個体ごとに8〜11コマ/秒
+    const stp=Math.floor(t*fps);                 // 何コマ目か（同じコマの間は完全に静止）
+    const bx=(hash01(sd+stp*7.3)-0.5)*R*0.13;    // 位置 ±6.5%
+    const by=(hash01(sd+stp*11.7)-0.5)*R*0.13;
+    const brot=(hash01(sd+stp*13.1)-0.5)*0.10;   // 角度 ±2.9°
+    const bsc=1+(hash01(sd+stp*17.3)-0.5)*0.07;  // 大きさ ±3.5%
     ctx.save();
     ctx.translate(x+bx,y+by);
-    ctx.rotate((hash01(sd*5.5)-0.5)*0.5 + Math.sin(t*w+bph)*0.014);
-    ctx.scale(sc,sc);
+    ctx.rotate((hash01(sd*5.5)-0.5)*0.5 + brot);
+    ctx.scale(sc*bsc,sc*bsc);
     ctx.globalAlpha=Math.min(1,qi)*Math.min(1,qo)*0.92;
     ctx.strokeStyle=col; ctx.fillStyle=col;
     drawStickerShape(kind,R);
@@ -2926,10 +2949,11 @@ let lastT=0, lastDt=0;
 function drawFrame(t){
   const dt=Math.max(0,Math.min(0.1,t-lastT)); lastT=t; lastDt=dt;
   const li=currentLineIndex(t);
+  const chList=layoutChars(t,li); // ★先に配置だけ決める（ステッカーがキャラの顔を避けるため）
   drawBackground(t,li);
   drawFx(t,li,dt);   // ★全体エフェクトはキャラの後ろへ（キャラの色チラつき対策）
-  drawChars(t,li);
-  drawStickers(t); // ★デコステッカー（14章）：文字より後ろ＝歌詞の可読性を守る
+  drawStickers(t);   // ★デコステッカー（14章）：キャラより後ろ・文字より後ろ
+  drawChars(chList);
   drawDecoPops(dt); // ★文字の後ろのレイヤーで、行をまたいでも溶けて消える
   drawLyric(t,li);
   drawSparks(dt);
