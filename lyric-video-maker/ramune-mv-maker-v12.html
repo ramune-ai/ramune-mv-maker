@@ -151,9 +151,10 @@
       <label class="filebtn" style="background:#E4F3FC;color:var(--soda-deep);">📄 歌詞txtを選ぶ<input type="file" id="lyricTxtFile" accept=".txt,text/plain"></label>
       <span class="note">貼り付け・D&Dの代わりにファイル選択でも読み込めます</span>
     </div>
+    <div style="overflow-x:auto; max-width:100%;">
     <textarea id="sectionText" placeholder="[Verse 1]&#10;ずっと しまってた 小さな宝物&#10;…（元の歌詞をぜんぶ貼り付け or .txtをドロップ）"
-      style="min-height:340px; font-size:1.05rem; line-height:1.7;
-             width:1400px; max-width:calc(100vw - 40px);"></textarea>
+      style="min-height:340px; font-size:1.05rem; line-height:1.7; width:1200px;"></textarea>
+    </div>
     <div class="row">
       <button class="btn pink" onclick="tapStart()">🎤 タップ打ち込み（JSONをここで作る）</button>
       <button class="btn ghost" id="snapBtn" onclick="snapLyricTiming()">🎯 行のタイミングを歌に吸着</button>
@@ -355,9 +356,15 @@
       <label style="flex:0 0 auto;">揺れ
         <input type="range" id="stickerBoil" min="0" max="20" step="0.5" value="6" style="width:120px; vertical-align:middle;">
       </label>
+      <label style="flex:0 0 auto;"><input type="checkbox" id="stickerUnifyChk" style="width:auto;"> 揺れ方を統一</label>
       <span class="note" id="stickerStatus"></span>
       <span class="note">セクションの盛り上がりに応じて自動で増減します（イントロは控えめ／サビは賑やか／落ちサビは静か）</span>
     </div>
+    <div class="row">
+      <label class="filebtn" style="background:#E4F3FC;color:var(--soda-deep);">🎨 デコ素材を追加（PNG・複数OK）<input type="file" id="decoFile" accept="image/png" multiple></label>
+      <span class="note">ファイル名＝モチーフ名（例：hane_01.png）。グリーンバック(#00FF00)は自動で透過にします。歌詞の意味に合わせて自動で使われ、ブラウザに保存されて次回も使えます</span>
+    </div>
+    <div class="row" id="decoAssetList" style="flex-wrap:wrap;"></div>
     <div id="lineList"></div>
 
     <div class="row" style="margin-top:14px;">
@@ -535,6 +542,7 @@ $("vocalFile").addEventListener("change",e=>{
   $("vocalName").textContent=f.name;
   resetVocalAnalysisCache();
 });
+$("decoFile").addEventListener("change",e=>{ addDecoFiles([...e.target.files]); e.target.value=""; });
 $("jsonFile").addEventListener("change",e=>{
   const f=e.target.files[0]; if(!f) return;
   const r=new FileReader();
@@ -631,6 +639,7 @@ setInterval(()=>{ // 4秒ごとに自動保存
       const f=new File([a.blob],a.name,{type:a.blob.type});
       if(a.kind==="audio"){ audio.src=URL.createObjectURL(f); audioBlob=f; state.audioName=a.name; $("audioName").textContent=a.name+"（復元）"; }
       else if(a.kind==="vocal"){ vocalBlob=f; $("vocalName").textContent=a.name+"（復元）"; }
+      else if(a.kind==="deco") await addDecoFiles([f],true);
       else if(a.kind==="bg") addBgFiles([f],true);
       else if(a.kind==="char") addCharFiles([f],true);
     }
@@ -978,6 +987,7 @@ function renderRowPreview(cv2,z){ // メインcanvasに描いて縮小コピー�
 }
 function renderLineList(){
   invalidateEnergyCache(); // 行やセクションが変わったら熱量キャッシュを捨てる（デコの量が追従する）
+  invalidateCategoryCache(); // 歌詞が変わったらカテゴリ判定もやり直す（17-6）
   const box=$("lineList"); box.innerHTML="";
   const zones=secZones(); let zi=0;
   let prevSec=null;
@@ -1871,6 +1881,7 @@ function gatherSettings(){
     easeDefault:{...state.easeDefault}, easeApply:!!state.easeApply,
     textStyle:{...state.textStyle}, currentTheme:state.currentTheme, fxBlend:!!state.fxBlend,
     stickerOn:!!state.stickerOn, stickerAmt:+state.stickerAmt||1, stickerBoil:+state.stickerBoil,
+    stickerUnifyBoil:!!state.stickerUnifyBoil,
     bgs:state.bgs.map(b=>({name:b.name})),
     chars:state.chars.map(c=>({name:c.name,keyMode:c.keyMode,keyStrength:c.keyStrength})),
   };
@@ -1898,6 +1909,7 @@ function applySettings(s){
   if(typeof s.stickerOn==="boolean"){ state.stickerOn=s.stickerOn; if($("stickerChk")) $("stickerChk").checked=s.stickerOn; }
   if(typeof s.stickerAmt==="number"){ state.stickerAmt=s.stickerAmt; if($("stickerAmt")) $("stickerAmt").value=s.stickerAmt; }
   if(typeof s.stickerBoil==="number"){ state.stickerBoil=s.stickerBoil; if($("stickerBoil")) $("stickerBoil").value=s.stickerBoil; }
+  if(typeof s.stickerUnifyBoil==="boolean"){ state.stickerUnifyBoil=s.stickerUnifyBoil; if($("stickerUnifyChk")) $("stickerUnifyChk").checked=s.stickerUnifyBoil; }
   updateStickerStatus();
   if(document.readyState!=="loading"&&$("tsColor")) initTextStylePanel();
   if($("themeSelect")) $("themeSelect").value=state.currentTheme;
@@ -2024,6 +2036,7 @@ document.addEventListener("DOMContentLoaded",initFxBlendToggle);
 state.stickerOn=true;   // 既定ON。OFFにすれば従来の見た目と直接見比べられる
 state.stickerAmt=1.0;   // 量の倍率（0.4〜2.0）。曲やテーマに合わせて手で調整できる余地
 state.stickerBoil=6;    // 揺れの強さの倍率（0〜20）。種類ごとの比率は保ったまま全体を強める
+state.stickerUnifyBoil=true; // 既定：全ステッカーで揺れ方を統一（セル画の一体感）
 function initStickerToggle(){
   const chk=$("stickerChk");
   if(chk){
@@ -2040,12 +2053,18 @@ function initStickerToggle(){
     sb.value=state.stickerBoil;
     sb.oninput=()=>{ state.stickerBoil=+sb.value; updateStickerStatus(); drawFrame(effT()); };
   }
+  const uc=$("stickerUnifyChk");
+  if(uc){
+    uc.checked=!!state.stickerUnifyBoil;
+    uc.onchange=()=>{ state.stickerUnifyBoil=uc.checked; updateStickerStatus(); drawFrame(effT()); };
+  }
   updateStickerStatus();
 }
 function updateStickerStatus(){
   const s=$("stickerStatus"); if(!s) return;
   s.textContent=state.stickerOn
-    ?("今：ON（量 ×"+(+state.stickerAmt).toFixed(1)+"／揺れ ×"+(+state.stickerBoil).toFixed(1)+"）")
+    ?("今：ON（量 ×"+(+state.stickerAmt).toFixed(1)+"／揺れ ×"+(+state.stickerBoil).toFixed(1)+
+      "／揺れ方："+(state.stickerUnifyBoil?"統一":"種類ごと（GPT表）")+"）")
     :"今：OFF（デコなし。従来の見た目）";
 }
 document.addEventListener("DOMContentLoaded",initStickerToggle);
@@ -2672,11 +2691,121 @@ function transActive(t){ // 切替演出が画面を覆っている最中か
   }
   return false;
 }
+/* ================= 歌詞キーワード→モチーフ辞書（GPT分析・17-6） =================
+   「いつ・どれだけ」は熱量エンジンが決めるが、「何を出すか」は今までランダムだった。
+   ここを埋めるため、歌詞1行を30カテゴリに対して辞書マッチでスコア付けし、
+   主カテゴリ70%・副カテゴリ30%で配分する（GPTの指摘②）。
+   本格的なNLPではなく単純なキーワード辞書だが、通信ゼロ・単一HTMLの原則を崩さずに済む。
+   motifsは、ユーザーがGeminiで作る素材の命名規則（例：hane_01.png→motif"hane"）と対応する。
+   builtinはその素材がまだ無いときのフォールバック（内蔵ベクター形状）。 */
+const LYRIC_CATEGORIES=[
+  {id:"sora",kw:["空","青空","翼","飛ぶ","飛んで","風","雲","自由","羽ばたく"],motifs:["hane","kumo"],builtin:"swirl",colors:["#7FD4FF","#EAF6FF"]},
+  {id:"koi",kw:["好き","恋","愛","君","胸","ときめき","愛して"],motifs:["heart","ribbon"],builtin:"heart",colors:["#FF9EC4","#FFD1E6"]},
+  {id:"kataomoi",kw:["届かない","片想い","会いたい","切ない"],motifs:["hane"],builtin:"heart",colors:["#C3AEFF"]},
+  {id:"namida",kw:["涙","泣く","泣いて","寂しい","別れ","悲しい"],motifs:["shizuku"],builtin:"wave",colors:["#7FD4FF"]},
+  {id:"ame",kw:["雨","傘","曇り","虹"],motifs:["niji","shizuku"],builtin:"wave",colors:["#9BB8D0"]},
+  {id:"hikari",kw:["光","輝く","照らす","未来","眩しい"],motifs:["kirakira"],builtin:"sparkle",colors:["#FFE071","#FFFDE7"]},
+  {id:"hoshi",kw:["星","夜","月","宇宙"],motifs:["hoshi"],builtin:"star",colors:["#C3AEFF","#2A2A5A"]},
+  {id:"taiyo",kw:["朝","太陽","目覚め"],motifs:["hoshi"],builtin:"star",colors:["#FFE071","#FFB38A"]},
+  {id:"umi",kw:["海","波","浜辺","夏"],motifs:["niji"],builtin:"wave",colors:["#7FD4FF","#6FE3D6"]},
+  {id:"sakura",kw:["春","桜","花見"],motifs:["hanabira"],builtin:"heart",colors:["#FFC2DA"]},
+  {id:"hana",kw:["花","咲く","蕾","咲いて"],motifs:["hanabira"],builtin:"heart",colors:["#FF9EC4"]},
+  {id:"aki",kw:["紅葉","秋"],motifs:["hanabira"],builtin:"wave",colors:["#FFB38A"]},
+  {id:"fuyu",kw:["雪","寒い","冬"],motifs:["kirakira"],builtin:"sparkle",colors:["#EAF6FF"]},
+  {id:"ongaku",kw:["歌","声","響く","メロディ","song"],motifs:["onpu"],builtin:"note",colors:["#7FD4FF","#FFE071"]},
+  {id:"jikan",kw:["時計","今日","明日","永遠","時間"],motifs:["hoshi"],builtin:"ring",colors:["#FFB38A"]},
+  {id:"zenshin",kw:["進む","走る","前へ","進め"],motifs:["kamifubuki"],builtin:"zigzag",colors:["#FFE071"]},
+  {id:"seishun",kw:["放課後","青春","制服"],motifs:["hoshi","onpu"],builtin:"note",colors:["#7FD4FF"]},
+  {id:"nakama",kw:["友達","みんな","絆","仲間"],motifs:["kamifubuki"],builtin:"ring",colors:["#FF9EC4","#7FD4FF","#FFE071"]},
+  {id:"omoide",kw:["記憶","昔","アルバム","思い出"],motifs:["kamifubuki"],builtin:"wave",colors:["#E8D9C0"]},
+  {id:"mahou",kw:["魔法","奇跡","願い"],motifs:["hoshi","kirakira"],builtin:"sparkle",colors:["#C3AEFF","#7FD4FF"]},
+  {id:"okashi",kw:["キャンディ","チョコ","甘い","シュガー"],motifs:["heart"],builtin:"heart",colors:["#FFC2DA","#B8F2DE"]},
+  {id:"genki",kw:["笑顔","ハッピー","わくわく","楽しい"],motifs:["kamifubuki"],builtin:"star",colors:["#FFE071","#FFB38A"]},
+  {id:"dokidoki",kw:["鼓動","緊張","ドキドキ"],motifs:["heart"],builtin:"heart",colors:["#FF5FA2"]},
+  {id:"honoo",kw:["燃える","熱い","炎"],motifs:["kirakira"],builtin:"zigzag",colors:["#FF6B35","#FFB38A"]},
+  {id:"kori",kw:["凍る","冷たい","氷"],motifs:["shizuku"],builtin:"star",colors:["#EAF6FF"]},
+  {id:"mirai",kw:["電子","デジタル","信号"],motifs:["kirakira"],builtin:"zigzag",colors:["#7FD4FF","#C3AEFF"]},
+  {id:"machi",kw:["街","ビル","ネオン"],motifs:["kumo"],builtin:"ring",colors:["#C3AEFF","#FF9EC4"]},
+  {id:"shizen",kw:["森","木","草"],motifs:["hanabira"],builtin:"wave",colors:["#9BE8B4"]},
+  {id:"takara",kw:["宝石","ダイヤ","ジュエル","宝物"],motifs:["houseki"],builtin:"star",colors:["#7FD4FF","#C3AEFF","#FFE071"]},
+  {id:"finale",kw:["ありがとう","最高","完成","祝福"],motifs:["kamifubuki"],builtin:"sparkle",colors:["#FFE071","#FF9EC4","#7FD4FF"]},
+];
+function categoryScores(text){
+  const s=String(text);
+  return LYRIC_CATEGORIES.map(c=>({cat:c,score:c.kw.reduce((a,k)=>a+(s.includes(k)?1:0),0)}))
+    .filter(x=>x.score>0).sort((a,b)=>b.score-a.score);
+}
+let _categoryByLine=null;
+function invalidateCategoryCache(){ _categoryByLine=null; }
+function categoryByLine(){ // 行番号→[主カテゴリ, 副カテゴリ]（該当なしはnull）
+  if(_categoryByLine) return _categoryByLine;
+  _categoryByLine=state.lines.map(l=>{
+    if(l.gap) return [null,null];
+    const sc=categoryScores(parseEmphasis(l.text).clean);
+    return [sc[0]?sc[0].cat:null, sc[1]?sc[1].cat:null];
+  });
+  return _categoryByLine;
+}
+function categoryAt(t){
+  const arr=categoryByLine(); if(!arr.length) return [null,null];
+  const li=currentLineIndex(t);
+  return arr[Math.max(0,Math.min(arr.length-1,li))];
+}
+
+/* ================= デコ素材（ユーザー読み込み・任意） =================
+   Geminiなどで作った透過/グリーンバックPNGを、モチーフ名で読み込む。
+   一度読み込めばIndexedDBに永続化され、フォントと同じく次回以降も使える（プロジェクトJSONとは別）。
+   ファイル名は「モチーフ名_連番.png」（例：hane_01.png）。同じモチーフの複数枚は
+   バリエーションとして扱い、毎回ランダムに選ぶ（同じ絵の連続を避けるため）。 */
+state.decoAssets={}; // motif名 → [{img, keyed}...]
+async function addDecoFiles(files,fromRestore){
+  for(const f of files){
+    try{
+      const url=URL.createObjectURL(f);
+      const img=await new Promise((res,rej)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=rej; im.src=url; });
+      const motif=f.name.replace(/\.[^.]+$/,"").replace(/_?\d+$/,"")||f.name;
+      const keyed=chromaKey(img,1,"green"); // グリーンバック除去（透過PNGならほぼ無害）
+      if(!state.decoAssets[motif]) state.decoAssets[motif]=[];
+      state.decoAssets[motif].push({img:keyed});
+      if(!fromRestore) saveAsset("deco",f.name,f);
+    }catch(err){ console.warn("deco load failed",f.name,err); }
+  }
+  renderDecoAssetList();
+}
+function deleteDecoAsset(motif,idx){
+  state.decoAssets[motif].splice(idx,1);
+  if(!state.decoAssets[motif].length) delete state.decoAssets[motif];
+  renderDecoAssetList();
+}
+function renderDecoAssetList(){
+  const box=$("decoAssetList"); if(!box) return;
+  box.innerHTML="";
+  const motifs=Object.keys(state.decoAssets);
+  if(!motifs.length){ box.innerHTML='<span class="note">まだ読み込まれていません</span>'; return; }
+  motifs.forEach(motif=>{
+    const row=document.createElement("div");
+    row.style.cssText="display:inline-flex; align-items:center; gap:4px; margin:2px 8px 2px 0; padding:2px 6px; background:#F5FBFF; border-radius:8px;";
+    row.innerHTML=`<b style="font-size:.78rem;">${motif}</b>`;
+    state.decoAssets[motif].forEach((a,i)=>{
+      const im=document.createElement("img");
+      im.src=a.img.toDataURL(); im.style.cssText="width:28px;height:28px;object-fit:contain;border-radius:4px;background:#fff;";
+      const del=document.createElement("button"); del.textContent="×"; del.className="btn ghost";
+      del.style.cssText="padding:0 5px; font-size:.7rem; min-width:auto;";
+      del.onclick=()=>deleteDecoAsset(motif,i);
+      const wrap=document.createElement("span"); wrap.style.cssText="display:inline-flex;align-items:center;gap:1px;";
+      wrap.append(im,del); row.appendChild(wrap);
+    });
+    box.appendChild(row);
+  });
+}
+
 /* ================= デコステッカー（14章：時間軸の文法） =================
    設計方針
    ・完全に決定論的：時刻tだけで絵が決まる。シークしても録画しても必ず同じ＝再現性がある
    ・スロット方式：熱量に応じた本数のスロットが、それぞれ独立のリズムで生まれ変わり続ける
    ・ボイリング：全ステッカーが常に微振動する（14-5「完全静止は避ける」＝手描き感の肝）
+   ・17-6：歌詞の意味カテゴリに応じてモチーフを選ぶ（主70%／副30%）。
+     ユーザー読み込み済みの素材があればそれを、無ければ内蔵ベクター形状にフォールバックする
 */
 const STK_PASTEL=["#FF9EC4","#7FD4FF","#FFE071","#9BE8B4","#C3AEFF","#FFB38A","#FF7FA8","#6FE3D6"];
 const STK_LOW =["note","wave","ring","heart","swirl"];
@@ -2722,7 +2851,15 @@ const STK_BOIL={
   burst: {pos:0.0075,rotDeg:0,  scale:0.0055,every:4}, // 集中線
   ring:  {pos:0.0115,rotDeg:0.5,scale:0.0075,every:4}, // 大きいステッカー相当
 };
-function boilOf(kind){ return STK_BOIL[kind]||STK_BOIL.ring; }
+/* セル画（手描きアニメ）は画面全体を同じタイミングで一斉に描き直すため、本来は
+   全ステッカーの震え方が揃っているのが自然。GPTの表は「1個ずつの理想値」としては
+   正しいが、画面全体で見たときの一体感という観点がなく、バラバラな印象になっていた
+   （ユーザーからの指摘で判明）。既定は「統一」、切り替えて見比べられるようにした。 */
+const STK_BOIL_UNIFIED={pos:0.020,rotDeg:0.7,scale:0.010,every:2};
+function boilOf(kind){
+  if(state.stickerUnifyBoil) return STK_BOIL_UNIFIED;
+  return STK_BOIL[kind]||STK_BOIL.ring;
+}
 
 function drawStickerShape(kind,R){
   ctx.lineWidth=Math.max(2,R*0.17); ctx.lineCap="round"; ctx.lineJoin="round";
@@ -2795,8 +2932,24 @@ function drawStickers(t){
     // ---- 個体固有（生まれ変わるたびに変わる）
     const sd=j*977+gen*31+7;
     const R=S*(0.038+sf*0.065);
-    const kind=pool[Math.floor(hash01(sd*1.9)*pool.length)%pool.length];
-    const col=STK_PASTEL[Math.floor(hash01(sd*2.7)*STK_PASTEL.length)%STK_PASTEL.length];
+    // ---- 17-6：歌詞の意味カテゴリからモチーフを選ぶ（主70%／副30%）。
+    //   該当カテゴリが無い行（キーワードに引っかからない）は、従来通り熱量ベースのランダムに戻す
+    const [pCat,sCat]=categoryAt(t);
+    let kind, col, imgAsset=null;
+    if(pCat){
+      const cat=(sCat&&hash01(sd*2.3)>0.70)?sCat:pCat;
+      const motifPool=cat.motifs.filter(m=>state.decoAssets[m]&&state.decoAssets[m].length);
+      if(motifPool.length){
+        const motif=motifPool[Math.floor(hash01(sd*3.3)*motifPool.length)%motifPool.length];
+        const variants=state.decoAssets[motif];
+        imgAsset=variants[Math.floor(hash01(sd*4.4)*variants.length)%variants.length];
+        kind="img";
+      }else kind=cat.builtin;
+      col=cat.colors[Math.floor(hash01(sd*2.7)*cat.colors.length)%cat.colors.length];
+    }else{
+      kind=pool[Math.floor(hash01(sd*1.9)*pool.length)%pool.length];
+      col=STK_PASTEL[Math.floor(hash01(sd*2.7)*STK_PASTEL.length)%STK_PASTEL.length];
+    }
     // 中央（歌詞の居場所）を避けて外周寄りに置く
     const ang=hash01(sd*2.1)*6.283, rad=0.60+hash01(sd*3.7)*0.42;
     const m=S*0.07;
@@ -2839,8 +2992,13 @@ function drawStickers(t){
     ctx.rotate((hash01(sd*5.5)-0.5)*0.5 + brot);
     ctx.scale(sc*bsc,sc*bsc);
     ctx.globalAlpha=Math.min(1,qi)*Math.min(1,qo)*0.92;
-    ctx.strokeStyle=col; ctx.fillStyle=col;
-    drawStickerShape(kind,R);
+    if(imgAsset){
+      const iw=imgAsset.img.width, ih=imgAsset.img.height, isc=(2*R)/Math.max(iw,ih);
+      ctx.drawImage(imgAsset.img,-iw*isc/2,-ih*isc/2,iw*isc,ih*isc);
+    }else{
+      ctx.strokeStyle=col; ctx.fillStyle=col;
+      drawStickerShape(kind,R);
+    }
     ctx.restore();
   }
   ctx.globalAlpha=1;
