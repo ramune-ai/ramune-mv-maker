@@ -312,6 +312,11 @@
       </label>
       <span class="note">曲全体にずっとかかるエフェクト（行ごとの指定と併用OK）</span>
     </div>
+    <div class="row" id="fxBlendRow" style="border:2px solid #FFD3E6; border-radius:12px; padding:8px 12px; background:#FFFBFD; align-items:center;">
+      <label style="font-weight:800;"><input type="checkbox" id="fxBlendChk" style="width:auto;"> ✨ エフェクトを光らせる（加算合成）</label>
+      <span class="note" id="fxBlendStatus">今：OFF（従来通りの半透明シール状）</span>
+      <span class="note">対象：🫧しゃぼん玉・✨キラキラ・🌟フレア・文字弾けの飛び散り・丸ぽんっ。チェックのON/OFFでその場で見比べられます</span>
+    </div>
     <div id="lineList"></div>
 
     <div class="row" style="margin-top:14px;">
@@ -1536,7 +1541,7 @@ function gatherSettings(){
     charPace:$("charPace").value, lyricDeco:$("lyricDeco").value,
     fx:{always:$("fxAlways").value}, // 個別の背景・キャラ・エフェクトは行タイムライン(state.lines[].bg/ch/fx)側が正
     easeDefault:{...state.easeDefault}, easeApply:!!state.easeApply,
-    textStyle:{...state.textStyle}, currentTheme:state.currentTheme,
+    textStyle:{...state.textStyle}, currentTheme:state.currentTheme, fxBlend:!!state.fxBlend,
     bgs:state.bgs.map(b=>({name:b.name})),
     chars:state.chars.map(c=>({name:c.name,keyMode:c.keyMode,keyStrength:c.keyStrength})),
   };
@@ -1560,6 +1565,7 @@ function applySettings(s){
   if(typeof s.easeApply==="boolean") state.easeApply=s.easeApply;
   if(s.textStyle) Object.assign(state.textStyle,s.textStyle); // v12のみ（無ければ既定値のまま）
   if(s.currentTheme&&THEMES[s.currentTheme]) state.currentTheme=s.currentTheme;
+  if(typeof s.fxBlend==="boolean"){ state.fxBlend=s.fxBlend; if($("fxBlendChk")){ $("fxBlendChk").checked=s.fxBlend; updateFxBlendStatus(); } }
   if(document.readyState!=="loading"&&$("tsColor")) initTextStylePanel();
   if($("themeSelect")) $("themeSelect").value=state.currentTheme;
   migrateLegacyToLines(s); // ★旧・素材タイムライン(secAssign)／さらに古い直接レンジ指定を行タイムラインへ変換
@@ -1659,6 +1665,23 @@ state.easeDefault={family:"back",dir:"out",outPct:33,inPct:33,overshoot:1.7,amp:
 state.easeApply=false; // OFFなら各モーションは元の挙動そのまま。ONで動き出しの速さをイージング曲線に差し替える
 /* --- 文字の見た目（F2 P1-5：色・フチ・発光） --- */
 state.textStyle={color:"#1B6FA8",colorOverlay:"#E2447E",stroke:"#FFFFFF",strokeWidth:0.14,glow:false,glowColor:"#FFD64F",glowBlur:0.35};
+state.fxBlend=false; // ✨エフェクトを加算合成(lighter)で光らせるか。OFF＝従来通り
+function initFxBlendToggle(){
+  const chk=$("fxBlendChk"); if(!chk) return;
+  chk.checked=!!state.fxBlend;
+  chk.onchange=()=>{ state.fxBlend=chk.checked; updateFxBlendStatus(); drawFrame(effT()); };
+  updateFxBlendStatus();
+}
+function updateFxBlendStatus(){
+  const s=$("fxBlendStatus"); if(!s) return;
+  s.textContent=state.fxBlend?"今：ON（光が重なるほど明るくなる・発光っぽい見え方）":"今：OFF（従来通りの半透明シール状）";
+}
+function withAdditive(fn){ // state.fxBlendがONの間だけ加算合成にする共通ラッパー
+  if(state.fxBlend){ ctx.save(); ctx.globalCompositeOperation="lighter"; fn(); ctx.restore(); }
+  else fn();
+}
+document.addEventListener("DOMContentLoaded",initFxBlendToggle);
+if(document.readyState!=="loading") initFxBlendToggle();
 function initTextStylePanel(){
   const ts=state.textStyle;
   $("tsColor").value=ts.color; $("tsColorOverlay").value=ts.colorOverlay; $("tsStroke").value=ts.stroke;
@@ -1989,16 +2012,18 @@ function drawBackground(t,lineIdx){
   }
 }
 function drawBubbleSet(set,t,alphaMul){
-  for(const b of set){
-    const y=((b.y*CH-t*b.v)%(CH+60)+(CH+60))%(CH+60)-30;
-    const x=b.x*CW+Math.sin(t*.8+b.ph)*14;
-    const r=b.r*(CH/720);
-    const rg=ctx.createRadialGradient(x-r*.35,y-r*.35,r*.1,x,y,r);
-    rg.addColorStop(0,`rgba(255,255,255,${.9*alphaMul})`);
-    rg.addColorStop(.6,`rgba(255,255,255,${.18*alphaMul})`);
-    rg.addColorStop(1,"rgba(255,255,255,0)");
-    ctx.fillStyle=rg; ctx.beginPath(); ctx.arc(x,y,r,0,6.29); ctx.fill();
-  }
+  withAdditive(()=>{
+    for(const b of set){
+      const y=((b.y*CH-t*b.v)%(CH+60)+(CH+60))%(CH+60)-30;
+      const x=b.x*CW+Math.sin(t*.8+b.ph)*14;
+      const r=b.r*(CH/720);
+      const rg=ctx.createRadialGradient(x-r*.35,y-r*.35,r*.1,x,y,r);
+      rg.addColorStop(0,`rgba(255,255,255,${.9*alphaMul})`);
+      rg.addColorStop(.6,`rgba(255,255,255,${.18*alphaMul})`);
+      rg.addColorStop(1,"rgba(255,255,255,0)");
+      ctx.fillStyle=rg; ctx.beginPath(); ctx.arc(x,y,r,0,6.29); ctx.fill();
+    }
+  });
 }
 
 /* --- キャラ --- */
@@ -2300,11 +2325,13 @@ function addSparks(x,y,fs){
 }
 function drawSparks(dt){
   sparks=sparks.filter(s=>s.t<s.life);
-  for(const s of sparks){
-    s.t+=dt; s.x+=s.vx*dt; s.y+=s.vy*dt; s.vy+=600*dt*(CH/720);
-    ctx.globalAlpha=1-s.t/s.life; ctx.fillStyle="#FFF6B8";
-    ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,6.29); ctx.fill();
-  }
+  withAdditive(()=>{
+    for(const s of sparks){
+      s.t+=dt; s.x+=s.vx*dt; s.y+=s.vy*dt; s.vy+=600*dt*(CH/720);
+      ctx.globalAlpha=1-s.t/s.life; ctx.fillStyle="#FFF6B8";
+      ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,6.29); ctx.fill();
+    }
+  });
   ctx.globalAlpha=1;
 }
 
@@ -2498,7 +2525,7 @@ function drawFx(t,lineIdx,dt){
     }
     ctx.globalAlpha=1;
   }
-  if(active("flare")){
+  if(active("flare")) withAdditive(()=>{
     // ゆっくり漂う光のフレア2つ＋斜めの光筋
     for(let i=0;i<2;i++){
       const x=CW*(0.3+0.4*i)+Math.sin(t*0.3+i*2.5)*CW*0.18;
@@ -2522,8 +2549,8 @@ function drawFx(t,lineIdx,dt){
     ctx.fillStyle=g;
     ctx.fillRect(-CW,-CH,CW*2,CH*2);
     ctx.restore();
-  }
-  if(active("sparkle")){
+  });
+  if(active("sparkle")) withAdditive(()=>{
     for(const s of sparkleSet){
       const tw=(Math.sin(t*3+s.ph)+1)/2;
       const x=s.x*CW, y=s.y*CH, r=s.sz*(CH/720)*10*tw;
@@ -2534,7 +2561,7 @@ function drawFx(t,lineIdx,dt){
       ctx.fill(); ctx.restore();
     }
     ctx.globalAlpha=1;
-  }
+  });
   // 丸ぽんっ：l.pop===trueの行に入った瞬間に発火（引継なしの単発デコ）
   if(lineIdx>=0 && state.lines[lineIdx] && state.lines[lineIdx].pop && lastPopLine!==lineIdx){
     lastPopLine=lineIdx;
@@ -2545,14 +2572,16 @@ function drawFx(t,lineIdx,dt){
     }
   }
   popFx=popFx.filter(p=>p.t<p.life);
-  for(const p of popFx){
-    p.t+=dt;
-    const q=p.t/p.life, r=p.r0*(1+q*2);
-    ctx.globalAlpha=(1-q)*0.8;
-    ctx.lineWidth=Math.max(1.5,r*0.16*(1-q));
-    ctx.strokeStyle=p.hue;
-    ctx.beginPath(); ctx.arc(p.x,p.y,r,0,6.29); ctx.stroke();
-  }
+  withAdditive(()=>{
+    for(const p of popFx){
+      p.t+=dt;
+      const q=p.t/p.life, r=p.r0*(1+q*2);
+      ctx.globalAlpha=(1-q)*0.8;
+      ctx.lineWidth=Math.max(1.5,r*0.16*(1-q));
+      ctx.strokeStyle=p.hue;
+      ctx.beginPath(); ctx.arc(p.x,p.y,r,0,6.29); ctx.stroke();
+    }
+  });
   ctx.globalAlpha=1;
 }
 
