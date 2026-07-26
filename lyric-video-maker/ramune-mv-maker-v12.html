@@ -185,18 +185,6 @@
   <!-- ② 演出 -->
   <section class="panel hidden" id="pane1">
     <h2>🪄 全体おまかせ設定</h2>
-    <div class="row" style="border:2px solid #FFD3E6; border-radius:12px; padding:10px 12px; background:#FFFBFD; flex-direction:column; align-items:stretch; gap:6px;">
-      <span class="note" style="font-weight:800; color:#B23368;">🆕 追加機能</span>
-      <div class="row" style="margin:0;">
-        <label style="font-weight:800;"><input type="checkbox" id="fxBlendChk" style="width:auto;"> ✨ エフェクトを光らせる（加算合成）</label>
-        <span class="note" id="fxBlendStatus">今：OFF（従来通りの半透明シール状）</span>
-      </div>
-      <span class="note">対象：🫧しゃぼん玉・✨キラキラ・🌟フレア・文字弾けの飛び散り・丸ぽんっ。ON/OFFでその場で見比べられます</span>
-      <div class="row" style="margin:4px 0 0;">
-        <label style="font-weight:800;"><input type="checkbox" id="chorusZoomChk" style="width:auto;" checked> 🔍 サビで背景を拍に合わせてズーム</label>
-      </div>
-      <span class="note">背景のカメラワーク機能です（行ごとの「文字演出」モーションとは別物）。「サビ」と判定された区間だけ、拍に合わせて背景がふわっとズームします。文字のモーションを変えても背景のズームは連動しません</span>
-    </div>
     <div class="row">
       <label>🎨 テーマ（世界観）
         <select id="themeSelect"></select>
@@ -336,6 +324,11 @@
         </select>
       </label>
       <span class="note">曲全体にずっとかかるエフェクト（行ごとの指定と併用OK）</span>
+    </div>
+    <div class="row">
+      <label><input type="checkbox" id="fxBlendChk" style="width:auto;"> ✨ エフェクトを光らせる（加算合成）</label>
+      <span class="note" id="fxBlendStatus">今：OFF（従来通りの半透明シール状）</span>
+      <span class="note">対象：🫧しゃぼん玉・✨キラキラ・🌟フレア・文字弾けの飛び散り・丸ぽんっ</span>
     </div>
     <div id="lineList"></div>
 
@@ -1588,7 +1581,7 @@ function gatherSettings(){
     charPace:$("charPace").value, lyricDeco:$("lyricDeco").value,
     fx:{always:$("fxAlways").value}, // 個別の背景・キャラ・エフェクトは行タイムライン(state.lines[].bg/ch/fx)側が正
     easeDefault:{...state.easeDefault}, easeApply:!!state.easeApply,
-    textStyle:{...state.textStyle}, currentTheme:state.currentTheme, fxBlend:!!state.fxBlend, chorusZoomOn:!!state.chorusZoomOn,
+    textStyle:{...state.textStyle}, currentTheme:state.currentTheme, fxBlend:!!state.fxBlend,
     bgs:state.bgs.map(b=>({name:b.name})),
     chars:state.chars.map(c=>({name:c.name,keyMode:c.keyMode,keyStrength:c.keyStrength})),
   };
@@ -1613,7 +1606,6 @@ function applySettings(s){
   if(s.textStyle) Object.assign(state.textStyle,s.textStyle); // v12のみ（無ければ既定値のまま）
   if(s.currentTheme&&THEMES[s.currentTheme]) state.currentTheme=s.currentTheme;
   if(typeof s.fxBlend==="boolean"){ state.fxBlend=s.fxBlend; if($("fxBlendChk")){ $("fxBlendChk").checked=s.fxBlend; updateFxBlendStatus(); } }
-  if(typeof s.chorusZoomOn==="boolean"){ state.chorusZoomOn=s.chorusZoomOn; if($("chorusZoomChk")) $("chorusZoomChk").checked=s.chorusZoomOn; }
   if(document.readyState!=="loading"&&$("tsColor")) initTextStylePanel();
   if($("themeSelect")) $("themeSelect").value=state.currentTheme;
   migrateLegacyToLines(s); // ★旧・素材タイムライン(secAssign)／さらに古い直接レンジ指定を行タイムラインへ変換
@@ -1730,14 +1722,6 @@ function withAdditive(fn){ // state.fxBlendがONの間だけ加算合成にす�
 }
 document.addEventListener("DOMContentLoaded",initFxBlendToggle);
 if(document.readyState!=="loading") initFxBlendToggle();
-state.chorusZoomOn=true; // 🔍サビの拍パンチズーム（背景カメラワーク）のON/OFF。文字演出のモーションとは独立
-function initChorusZoomToggle(){
-  const chk=$("chorusZoomChk"); if(!chk) return;
-  chk.checked=!!state.chorusZoomOn;
-  chk.onchange=()=>{ state.chorusZoomOn=chk.checked; drawFrame(effT()); };
-}
-document.addEventListener("DOMContentLoaded",initChorusZoomToggle);
-if(document.readyState!=="loading") initChorusZoomToggle();
 function initTextStylePanel(){
   const ts=state.textStyle;
   $("tsColor").value=ts.color; $("tsColorOverlay").value=ts.colorOverlay; $("tsStroke").value=ts.stroke;
@@ -1932,21 +1916,9 @@ function pickBg(lineIdx){
   if(!name && state.bgs.length) return state.bgs[0]; // 何も設定していなければ最初の1枚を自動採用（初心者向けの挙動）
   return null;
 }
-const PUNCH_EASE=Easing.get("circ","out");
-function chorusPunchZoom(t,lineIdx){ // F2 P2-2：サビの拍アタックで軽いパンチズーム（背景のカメラワーク。文字演出のモーションとは独立）
-  if(!state.chorusZoomOn) return 0;
-  const l=lineIdx>=0?state.lines[lineIdx]:null;
-  if(!l||l.gap) return 0;
-  const sec=(l.section||"").toLowerCase();
-  if(!/chorus|サビ/.test(sec)) return 0;
-  const DECAY=0.3;
-  const bp=beatPhase(t);
-  const p=Math.max(0,1-bp/DECAY);
-  return PUNCH_EASE(p)*0.05;
-}
 function drawBgImage(bg,t,lineIdx){
   if(bg){
-    const zoom=1.03+0.02*Math.sin(t*0.08)+(lineIdx!==undefined?chorusPunchZoom(t,lineIdx):0);
+    const zoom=1.03+0.02*Math.sin(t*0.08);
     const img=bg.img, s=Math.max(CW/img.width,CH/img.height)*zoom;
     ctx.drawImage(img,(CW-img.width*s)/2,(CH-img.height*s)/2,img.width*s,img.height*s);
   }else{
