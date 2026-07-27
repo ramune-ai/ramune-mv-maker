@@ -290,6 +290,13 @@
           <option value="inazuma">稲妻</option><option value="hatena">ハテナ（？）</option>
         </select>
       </label>
+      <label style="flex:0 0 auto;">デコの大きさ
+        <input type="range" id="decoSize" min="0.5" max="3" step="0.1" value="1" style="width:110px; vertical-align:middle;">
+      </label>
+      <label style="flex:0 0 auto;">デコの速さ
+        <input type="range" id="decoSpeed" min="0.3" max="3" step="0.1" value="1" style="width:110px; vertical-align:middle;">
+      </label>
+      <span class="note" id="decoStatus"></span>
       <label>配置
         <select id="lyricStyle">
           <option value="auto">すきま配置（キャラをよけて空白に置く）</option>
@@ -559,6 +566,8 @@ function loadTiming(d){
   state.lines=d.lines.filter(l=>typeof l.time==="number")
     .map(l=>({text:String(l.text), time:l.time, motion:l.motion||"default", deco:l.deco, style:l.style, gap:!!l.gap, section:l.section, trans:l.trans,
       bg:l.bg, ch:l.ch, chPos:l.chPos, chSize:l.chSize, chMotion:l.chMotion, fx:l.fx, pop:!!l.pop,
+      chSizeNum:typeof l.chSizeNum==="number"?l.chSizeNum:undefined,
+      chOffsetX:typeof l.chOffsetX==="number"?l.chOffsetX:undefined,
       charTimes:Array.isArray(l.charTimes)?l.charTimes:undefined}));
   state.title=d.title||state.title;
   if(Array.isArray(d.credits)) state.credits=d.credits;
@@ -629,7 +638,10 @@ function projectData(){
     credits:state.credits,
     sectionText:$("sectionText").value,
     lines:state.lines.map(l=>({text:l.text,time:l.time,motion:l.motion||"default",deco:l.deco||undefined,style:l.style||undefined,gap:!!l.gap||undefined,section:l.section||undefined,trans:l.trans||undefined,
-      bg:l.bg||undefined,ch:l.ch||undefined,chPos:l.chPos||undefined,chSize:l.chSize||undefined,chMotion:l.chMotion||undefined,fx:l.fx||undefined,pop:l.pop||undefined,charTimes:l.charTimes||undefined})),
+      bg:l.bg||undefined,ch:l.ch||undefined,chPos:l.chPos||undefined,chSize:l.chSize||undefined,chMotion:l.chMotion||undefined,fx:l.fx||undefined,pop:l.pop||undefined,
+      chSizeNum:typeof l.chSizeNum==="number"?l.chSizeNum:undefined,
+      chOffsetX:typeof l.chOffsetX==="number"?l.chOffsetX:undefined,
+      charTimes:l.charTimes||undefined})),
     settings:gatherSettings()};
 }
 setInterval(()=>{ // 4秒ごとに自動保存
@@ -982,6 +994,22 @@ function mkFieldSel(l,opts,key,{fullRerender=false,emptyValue=""}={}){
   sel.onclick=e=>e.stopPropagation();
   return sel;
 }
+// ★感覚的に大きさ・位置をずらせる連続値の入力欄（24章）。空欄＝上の行から引継（従来の選択式と同じ流儀）
+function mkFieldNum(l,key,{min,max,step,placeholder}={}){
+  const inp=document.createElement("input");
+  inp.type="number"; inp.step=step||"0.05";
+  if(min!=null) inp.min=min; if(max!=null) inp.max=max;
+  inp.placeholder=placeholder||"（引継）";
+  inp.style.cssText="width:76px;";
+  if(typeof l[key]==="number") inp.value=l[key];
+  inp.onchange=()=>{
+    pushUndo();
+    if(inp.value==="") delete l[key]; else l[key]=+inp.value;
+    drawFrame(effT());
+  };
+  inp.onclick=e=>e.stopPropagation();
+  return inp;
+}
 function renderRowPreview(cv2,z){ // メインcanvasに描いて縮小コピー（見出し行専用のサムネ）
   const tA=lineTime(state.lines[z.idx]);
   const zEnd=(z.z<state.lines.length)?lineTime(state.lines[z.z]):tA+6;
@@ -1045,6 +1073,8 @@ function renderLineList(){
           mkExRow("キャラ",mkFieldSel(l,chFieldOpts(),"ch",{fullRerender:true})),
           mkExRow("位置",mkFieldSel(l,POS_OPTS,"chPos",{emptyValue:"right"})),
           mkExRow("大きさ",mkFieldSel(l,SIZE_OPTS,"chSize",{emptyValue:"1"})),
+          mkExRow("大きさ調整",mkFieldNum(l,"chSizeNum",{min:0.3,max:2,step:0.05,placeholder:"0.3〜2"})),
+          mkExRow("位置調整",mkFieldNum(l,"chOffsetX",{min:-0.3,max:0.3,step:0.02,placeholder:"-0.3〜0.3"})),
           mkExRow("動き",mkFieldSel(l,CMO_OPTS,"chMotion",{emptyValue:"sway"})),
           mkExRow("エフェクト",mkFieldSel(l,FX_OPTS,"fx"))
         );
@@ -1126,6 +1156,8 @@ function renderLineList(){
       mkExRow("キャラ",mkFieldSel(l,chFieldOpts(),"ch",{fullRerender:true})),
       mkExRow("位置",mkFieldSel(l,POS_OPTS,"chPos",{emptyValue:"right"})),
       mkExRow("大きさ",mkFieldSel(l,SIZE_OPTS,"chSize",{emptyValue:"1"})),
+      mkExRow("大きさ調整",mkFieldNum(l,"chSizeNum",{min:0.3,max:2,step:0.05,placeholder:"0.3〜2"})),
+      mkExRow("位置調整",mkFieldNum(l,"chOffsetX",{min:-0.3,max:0.3,step:0.02,placeholder:"-0.3〜0.3"})),
       mkExRow("動き",mkFieldSel(l,CMO_OPTS,"chMotion",{emptyValue:"sway"})),
       mkExRow("エフェクト",mkFieldSel(l,FX_OPTS,"fx"))
     );
@@ -1889,6 +1921,7 @@ function gatherSettings(){
     textStyle:{...state.textStyle}, currentTheme:state.currentTheme, fxBlend:!!state.fxBlend,
     stickerOn:!!state.stickerOn, stickerAmt:+state.stickerAmt||1, stickerSize:+state.stickerSize||1, stickerBoil:+state.stickerBoil,
     stickerUnifyBoil:!!state.stickerUnifyBoil,
+    decoSize:+state.decoSize||1, decoSpeed:+state.decoSpeed||1,
     bgs:state.bgs.map(b=>({name:b.name})),
     chars:state.chars.map(c=>({name:c.name,keyMode:c.keyMode,keyStrength:c.keyStrength})),
   };
@@ -1918,6 +1951,9 @@ function applySettings(s){
   if(typeof s.stickerSize==="number"){ state.stickerSize=s.stickerSize; if($("stickerSize")) $("stickerSize").value=s.stickerSize; }
   if(typeof s.stickerBoil==="number"){ state.stickerBoil=s.stickerBoil; if($("stickerBoil")) $("stickerBoil").value=s.stickerBoil; }
   if(typeof s.stickerUnifyBoil==="boolean"){ state.stickerUnifyBoil=s.stickerUnifyBoil; if($("stickerUnifyChk")) $("stickerUnifyChk").checked=s.stickerUnifyBoil; }
+  if(typeof s.decoSize==="number"){ state.decoSize=s.decoSize; if($("decoSize")) $("decoSize").value=s.decoSize; }
+  if(typeof s.decoSpeed==="number"){ state.decoSpeed=s.decoSpeed; if($("decoSpeed")) $("decoSpeed").value=s.decoSpeed; }
+  if(typeof updateDecoStatus==="function") updateDecoStatus();
   updateStickerStatus();
   if(document.readyState!=="loading"&&$("tsColor")) initTextStylePanel();
   if($("themeSelect")) $("themeSelect").value=state.currentTheme;
@@ -2046,6 +2082,21 @@ state.stickerAmt=1.0;   // 量の倍率（0.2〜1.5・細かく調整）。曲�
 state.stickerSize=1.0;  // 大きさの倍率（0.4〜2.5）
 state.stickerBoil=6;    // 揺れの強さの倍率（0〜20）。種類ごとの比率は保ったまま全体を強める
 state.stickerUnifyBoil=true; // 既定：全ステッカーで揺れ方を統一（セル画の一体感）
+/* --- デコ（打点）の大きさ・速さ調整（24章） --- */
+state.decoSize=1.0;  // 大きさの倍率（0.5〜3）。19-2の数値を土台に、手元でさらに拡大縮小できる
+state.decoSpeed=1.0; // 速さの倍率（0.3〜3）。寿命に反比例＝大きいほど出現・消失が速くなる
+function initDecoToggle(){
+  const dz=$("decoSize");
+  if(dz){ dz.value=state.decoSize; dz.oninput=()=>{ state.decoSize=+dz.value; updateDecoStatus(); }; }
+  const ds=$("decoSpeed");
+  if(ds){ ds.value=state.decoSpeed; ds.oninput=()=>{ state.decoSpeed=+ds.value; updateDecoStatus(); }; }
+  updateDecoStatus();
+}
+function updateDecoStatus(){
+  const s=$("decoStatus"); if(!s) return;
+  s.textContent="大きさ ×"+(+state.decoSize).toFixed(1)+"／速さ ×"+(+state.decoSpeed).toFixed(1);
+}
+document.addEventListener("DOMContentLoaded",initDecoToggle);
 function initStickerToggle(){
   const chk=$("stickerChk");
   if(chk){
@@ -2265,14 +2316,17 @@ function resolveCharAt(lineIdx){
     if(l && l.ch!==undefined && l.ch!==""){ chSetIdx=i; chVal=l.ch; break; }
   }
   if(chSetIdx<0||chVal==="none") return null;
-  let pos="",size="",cmo="";
+  let pos="",size="",cmo="",sizeNum=null,offsetX=null;
   for(let i=lineIdx;i>=chSetIdx;i--){
     const l=state.lines[i]; if(!l) continue;
     if(!pos&&l.chPos) pos=l.chPos;
     if(!size&&l.chSize) size=l.chSize;
     if(!cmo&&l.chMotion) cmo=l.chMotion;
+    // ★感覚的な大きさ・位置調整（連続値）。空欄＝上の行から引継、選択式のsize/posはそのまま土台として使う
+    if(sizeNum==null&&typeof l.chSizeNum==="number") sizeNum=l.chSizeNum;
+    if(offsetX==null&&typeof l.chOffsetX==="number") offsetX=l.chOffsetX;
   }
-  return {name:chVal, pos:pos||"right", size:size||"1", cmo:cmo||"sway", chSetIdx};
+  return {name:chVal, pos:pos||"right", size:size||"1", cmo:cmo||"sway", chSetIdx, sizeNum, offsetX:offsetX||0};
 }
 function pickBg(lineIdx){
   const name=resolveLineField(lineIdx,"bg");
@@ -2426,7 +2480,7 @@ function visibleChars(t,lineIdx){
   if(!r) return [];
   const ch=state.chars.find(c=>c.name===r.name); if(!ch) return [];
   const startTime=state.lines[r.chSetIdx]?lineTime(state.lines[r.chSetIdx]):t;
-  return [{ch,ci:0,startTime,ovr:{pos:r.pos,size:r.size,cmo:r.cmo}}];
+  return [{ch,ci:0,startTime,ovr:{pos:r.pos,size:r.size,cmo:r.cmo,sizeNum:r.sizeNum,offsetX:r.offsetX}}];
 }
 let charRects=[]; // このフレームでキャラが実際に占めた矩形（字幕よけ用）
 /* キャラの「配置計算」と「描画」を分離してある。
@@ -2442,7 +2496,8 @@ function layoutChars(t,lineIdx){
     const appear=1+0.4*(1-p)*Math.sin(p*Math.PI);
     const alpha=Math.min(1,p*2);
     const img=charImg(ch);
-    const hRatio=SIZE_H[String(ovr.size)]??0.85;
+    // ★「感覚的に大きくしたり位置をずらしたりできる」調整（連続値）。未設定なら従来の3段階のまま
+    const hRatio=ovr.sizeNum!=null?ovr.sizeNum:(SIZE_H[String(ovr.size)]??0.85);
     const h=CH*hRatio, s=h/img.height, w=img.width*s;
     const cpos=ovr.pos;
     let x;
@@ -2450,6 +2505,7 @@ function layoutChars(t,lineIdx){
     else if(cpos==="center") x=CW*0.5-w/2;
     else x=CW*0.82-w/2;
     x+=(ci%3-1)*CW*0.03;
+    x+=(ovr.offsetX||0)*CW; // ★左右の微調整（-0.3〜+0.3＝画面幅の-30%〜+30%）
     // ★素材が画面から切れないように補正（幅が画面以上なら中央）
     if(w>=CW) x=(CW-w)/2;
     else x=Math.max(0,Math.min(CW-w,x));
@@ -2652,8 +2708,9 @@ const DECO_SHAPES=[
 const DECO_LIFE={burst:0.18,kirakira:0.14,heart:0.45,bikkuri:0.20,kamifubuki:0.60,ase:0.475,
   onpu:0.65,hoshi:0.45,circle:0.60,supiido:0.15,inazuma:0.14,hatena:0.30};
 // 種類ごとのサイズ（文字高さ=100%基準。19-2に無い種類は近い性質から類推）
-const DECO_SIZE={burst:1.25,kirakira:0.25,heart:0.29,bikkuri:0.40,kamifubuki:0.13,ase:0.24,
-  onpu:0.28,hoshi:0.25,circle:0.20,supiido:0.55,inazuma:0.35,hatena:0.30};
+// ★「小さすぎて見えない」というフィードバックを受け、19-2の数値から全体を約1.6倍に引き上げた
+const DECO_SIZE={burst:2.00,kirakira:0.40,heart:0.46,bikkuri:0.64,kamifubuki:0.21,ase:0.38,
+  onpu:0.45,hoshi:0.40,circle:0.32,supiido:0.88,inazuma:0.56,hatena:0.48};
 // 種類ごとの出現・消失スタイル（19-2の出現/消失パターンを3アーキタイプへ集約）
 //   flash= 一瞬パッと出て素早く消える／grow=にゅるっと拡大して普通に消える／drift=出ながら流れる
 const DECO_CURVE={burst:"flash",kirakira:"flash",bikkuri:"flash",supiido:"flash",inazuma:"flash",
@@ -2760,8 +2817,9 @@ function spawnDeco(x,y,fs,seed,lineIdx,textColor){
   if(DECO_LEGACY[mode]) mode=DECO_LEGACY[mode];
   const shape=decoShapeFor(mode,lineIdx,(state.lines[lineIdx]||{}).text||""); // ★行番号ごとに固定（同じ行の図形は同じ種類）
   const count=1+(hash01(seed*1.7)<0.15?1:0); // 基本1個・たまに2個重なる
-  const size=(DECO_SIZE[shape]!=null?DECO_SIZE[shape]:0.30)*fs; // ★19-2：文字高さ基準のサイズ
-  const life0=DECO_LIFE[shape]!=null?DECO_LIFE[shape]:0.5;
+  // ★state.decoSize/decoSpeedで手元から大きさ・速さを調整できる（既定は両方1＝19-2の数値そのまま）
+  const size=(DECO_SIZE[shape]!=null?DECO_SIZE[shape]:0.30)*fs*(state.decoSize||1);
+  const life0=(DECO_LIFE[shape]!=null?DECO_LIFE[shape]:0.5)/(state.decoSpeed||1); // 速さは寿命の逆数（速い＝短い）
   const curve=DECO_CURVE[shape]||"grow";
   for(let i=0;i<count;i++){
     // ★19-2「色」：文字と同色61%／同系統で明暗差あり24%／完全別色15%
@@ -3113,6 +3171,46 @@ function computeStickerBaseLayout(zoneIdx,K,S){
       }
     }
   }
+  // ★「行が変わるとステッカーの位置が変わる」というフィードバックへの対応：
+  //   文字・キャラの回避を毎フレーム動的に行うのをやめ、このセクションの間に実際に
+  //   起こりうる文字位置を複数の代表時刻でサンプルして合成し、最終位置を一度だけ焼き込む。
+  //   （textKeepOutは読み取り専用＝charRectsを書き換えないので、サンプルしても他に影響しない）
+  const zs=secZones(), li0=zs[zoneIdx]?zs[zoneIdx].idx:0;
+  const [zt0,ztEnd]=stickerWindow(li0,zoneIdx);
+  const sampleTimes=[zt0+0.15, zt0+(ztEnd-zt0)*0.5, Math.max(zt0+0.15,ztEnd-0.15)];
+  const keepOutUnion=[...charKeepOut()];
+  for(const st of sampleTimes) keepOutUnion.push(...textKeepOut(st,currentLineIndex(st)));
+  const m=S*STICKER_CONFIG.edgeMargin;
+  for(const p of pts){
+    let x=Math.max(m,Math.min(CW-m, CW/2+Math.cos(p.ang)*p.rad*CW*0.50));
+    let y=Math.max(m,Math.min(CH-m, CH/2+Math.sin(p.ang)*p.rad*CH*0.52));
+    for(const k of keepOutUnion){
+      if(x+p.R*0.7>k.x0 && x-p.R*0.7<k.x1 && y+p.R*0.7>k.y0 && y-p.R*0.7<k.y1){
+        const toL=k.x0-p.R*STICKER_CONFIG.keepOutPushMargin, toR=k.x1+p.R*STICKER_CONFIG.keepOutPushMargin;
+        x=(Math.abs(x-toL)<Math.abs(x-toR))?toL:toR;
+        if(x<m||x>CW-m) y=k.y1+p.R*0.8;
+        x=Math.max(m,Math.min(CW-m,x)); y=Math.max(m,Math.min(CH-m,y));
+      }
+    }
+    p.x=x; p.y=y;
+  }
+  // ★キープアウト回避で寄ってしまったペアを、x,y空間でもう一度だけ押し離す
+  //   （角度空間の緩和だけだと、回避で結果的に近づいてしまうことがあるため）
+  for(let iter=0;iter<STICKER_CONFIG.relaxIters;iter++){
+    for(let a=0;a<pts.length;a++)for(let b=a+1;b<pts.length;b++){
+      const A=pts[a],B=pts[b];
+      const dx=B.x-A.x, dy=B.y-A.y, dist=Math.hypot(dx,dy);
+      const minDist=(A.R+B.R)*STICKER_CONFIG.relaxMinDistMult;
+      if(dist>0.001 && dist<minDist){
+        const push=(minDist-dist)/minDist*0.5, ux=dx/dist, uy=dy/dist;
+        A.x-=ux*push*A.R*0.3; A.y-=uy*push*A.R*0.3;
+        B.x+=ux*push*B.R*0.3; B.y+=uy*push*B.R*0.3;
+      }
+    }
+  }
+  for(const p of pts){ // 押し離した結果、画面外に出ないよう最後にもう一度だけ収める
+    p.x=Math.max(m,Math.min(CW-m,p.x)); p.y=Math.max(m,Math.min(CH-m,p.y));
+  }
   _stickerLayoutCache.set(key,pts);
   return pts;
 }
@@ -3124,8 +3222,6 @@ function drawStickers(t){
   const [pCat,sCat,zoneIdx]=categoryAt(t);
   const [t0,tEnd]=stickerWindow(li,zoneIdx);
   const S=Math.min(CW,CH);
-  // ★文字・キャラの両方を避ける。文字側は現在の配置ロジック（将来変わっても）を都度読みに行くので追従する
-  const keepOut=[...charKeepOut(), ...textKeepOut(t,li)];
   const CFG=STICKER_CONFIG;
   const wave2=(e>=CFG.wave2EnergyMin)&&(tEnd-t0>CFG.wave2MinZoneLen);
   const mid=t0+(tEnd-t0)*CFG.wave2MidFrac;
@@ -3153,20 +3249,8 @@ function drawStickers(t){
       kind=pool[Math.floor(hash01(sd*1.9)*pool.length)%pool.length];
       col=STK_PASTEL[Math.floor(hash01(sd*2.7)*STK_PASTEL.length)%STK_PASTEL.length];
     }
-    // ---- 位置：セクション単位の基本配置（重なり回避済み）に、文字・キャラを避ける押し出しを重ねる
-    const {ang,rad}=base[j];
-    const m=S*CFG.edgeMargin;
-    let x=Math.max(m,Math.min(CW-m, CW/2+Math.cos(ang)*rad*CW*0.50));
-    let y=Math.max(m,Math.min(CH-m, CH/2+Math.sin(ang)*rad*CH*0.52));
-    for(const k of keepOut){
-      if(x+R*0.7>k.x0 && x-R*0.7<k.x1 && y+R*0.7>k.y0 && y-R*0.7<k.y1){
-        const toL=k.x0-R*CFG.keepOutPushMargin, toR=k.x1+R*CFG.keepOutPushMargin;
-        x=(Math.abs(x-toL)<Math.abs(x-toR))?toL:toR;
-        if(x<m||x>CW-m) y=k.y1+R*0.8; // 横に逃げ場がなければ下（足元）へ
-        x=Math.max(m,Math.min(CW-m,x));
-        y=Math.max(m,Math.min(CH-m,y));
-      }
-    }
+    // ---- 位置：セクション単位で一度だけ焼き込んだ最終位置を使う（行が変わっても動かない）
+    const {x,y}=base[j];
     // ---- 出現・退場スタイル：「基本は急に出て急に消える（ペタッ）」。
     //   ペタッ＝ほぼ瞬時に切り替わる。これを既定（70%）にし、残り30%だけ
     //   「にゅるっと」（バウンド付き）を混ぜて単調さを防ぐ。時間は全体的に短めにした。
