@@ -282,11 +282,12 @@
         <select id="lyricDeco">
           <option value="none">なし</option>
           <option value="random">おまかせランダム</option>
-          <option value="circle">丸</option><option value="triangle">三角</option>
-          <option value="square">四角</option><option value="hexagon">六角形</option>
-          <option value="heart">ハート</option><option value="cross">バツ</option>
-          <option value="question">ハテナ</option><option value="burst">集中線</option>
-          <option value="diamond">ダイヤ</option>
+          <option value="burst">集中線</option><option value="kirakira">キラッ</option>
+          <option value="heart">小ハート</option><option value="bikkuri">ビックリ（！）</option>
+          <option value="kamifubuki">紙吹雪</option><option value="ase">汗</option>
+          <option value="onpu">音符</option><option value="hoshi">星</option>
+          <option value="circle">丸・バブル</option><option value="supiido">スピード線</option>
+          <option value="inazuma">稲妻</option><option value="hatena">ハテナ（？）</option>
         </select>
       </label>
       <label>配置
@@ -2239,7 +2240,9 @@ function easeFnOf(l){
   const cfg=easeOf(l);
   return Easing.get(cfg.family,cfg.dir,cfg);
 }
-const DECO_SEL={default:"（デコ:全体）",none:"デコなし",random:"ランダム",circle:"丸",triangle:"三角",square:"四角",hexagon:"六角",heart:"ハート",cross:"バツ",question:"ハテナ",burst:"集中線",diamond:"ダイヤ"};
+const DECO_SEL={default:"（デコ:全体）",none:"デコなし",random:"ランダム",burst:"集中線",kirakira:"キラッ",
+  heart:"小ハート",bikkuri:"ビックリ",kamifubuki:"紙吹雪",ase:"汗",onpu:"音符",hoshi:"星",
+  circle:"丸・バブル",supiido:"スピード線",inazuma:"稲妻",hatena:"ハテナ"};
 const STYLE_SEL={default:"（配置:全体）",auto:"すきま配置",bottom:"中央下",overlay:"かぶせ",arc:"円形"};
 const SAFE_TOP=0.06; // YouTube安全圏の天井
 
@@ -2626,42 +2629,99 @@ function arcLayout(text,t,lineIdx){
 }
 
 /* --- 歌詞デコ（文字まわりの図形） --- */
-const DECO_SHAPES=["circle","triangle","square","hexagon","heart","cross","question","burst","diamond"];
-const DECO_COLORS=["#FF5FA2","#2BA6F0","#FFB020","#3EC272","#9A6BFF"];
+/* ================= デコ（打点・アクセント装飾）= 19-2：GPTの実測分析を反映 =================
+   デコはステッカー（世界観・数秒滞在）とは役割が違う。「打った感じ」の一瞬の強調だけに絞る。
+   種類・使用率・寿命・サイズ・色の配分は、GPT分析の数値をそのまま採用した。 */
+// 使用率(19-2)に比例した重み付き抽選プール（おまかせランダム時に使う）
+const DECO_SHAPES=[
+  ...Array(22).fill("burst"),     // 集中線 22%
+  ...Array(18).fill("kirakira"),  // キラッ 18%
+  ...Array(14).fill("heart"),     // 小ハート 14%
+  ...Array(10).fill("bikkuri"),   // ビックリ線 10%
+  ...Array(8).fill("kamifubuki"), // 紙吹雪 8%
+  ...Array(6).fill("ase"),        // 汗 6%
+  ...Array(5).fill("onpu"),       // 音符 5%
+  ...Array(5).fill("hoshi"),      // 星 5%
+  ...Array(4).fill("circle"),     // 小さい円・バブル 4%
+  ...Array(3).fill("supiido"),    // スピード線 3%
+  ...Array(2).fill("inazuma"),    // 稲妻 2%
+  ...Array(2).fill("hatena"),     // 疑問符 1.5%（丸め）
+];
+// 種類ごとの寿命秒（19-2の範囲の中央値）
+const DECO_LIFE={burst:0.18,kirakira:0.14,heart:0.45,bikkuri:0.20,kamifubuki:0.60,ase:0.475,
+  onpu:0.65,hoshi:0.45,circle:0.60,supiido:0.15,inazuma:0.14,hatena:0.30};
+// 種類ごとのサイズ（文字高さ=100%基準。19-2に無い種類は近い性質から類推）
+const DECO_SIZE={burst:1.25,kirakira:0.25,heart:0.29,bikkuri:0.40,kamifubuki:0.13,ase:0.24,
+  onpu:0.28,hoshi:0.25,circle:0.20,supiido:0.55,inazuma:0.35,hatena:0.30};
+// 種類ごとの出現・消失スタイル（19-2の出現/消失パターンを3アーキタイプへ集約）
+//   flash= 一瞬パッと出て素早く消える／grow=にゅるっと拡大して普通に消える／drift=出ながら流れる
+const DECO_CURVE={burst:"flash",kirakira:"flash",bikkuri:"flash",supiido:"flash",inazuma:"flash",
+  heart:"grow",hoshi:"grow",circle:"grow",kamifubuki:"grow",hatena:"grow",
+  onpu:"drift",ase:"drift"};
+const DECO_COLORS=["#FF5FA2","#2BA6F0","#FFB020","#3EC272","#9A6BFF"]; // 完全別色(15%)用のアクセント色
+/* 感情語→推奨デコ（19-2「感情記号対応」表をそのまま採用）。おまかせランダム時、
+   歌詞にこれらの語が含まれていれば該当する種類を優先的に選ぶ（70%）。 */
+const EMOTION_DECO=[
+  {kw:["驚","びっくり","えっ"],shapes:["bikkuri","burst"]},
+  {kw:["？","疑問","なぜ","どうして"],shapes:["hatena","circle"]},
+  {kw:["照れ","はずかし","てれ"],shapes:["ase","heart"]},
+  {kw:["怒","許さない","ムカ"],shapes:["inazuma"]},
+  {kw:["楽し","嬉し","わくわく","ハッピー"],shapes:["onpu","kamifubuki"]},
+  {kw:["好き","恋","愛して"],shapes:["heart"]},
+  {kw:["感動","涙が","キラキラ","輝"],shapes:["kirakira"]},
+  {kw:["走","進め","急いで","前へ"],shapes:["supiido"]},
+  {kw:["応援","がんばれ","負けない"],shapes:["burst"]},
+  {kw:["泣","涙","悲し"],shapes:["ase"]},
+];
 function hash01(n){ let x=Math.sin(n*127.1+311.7)*43758.5453; return x-Math.floor(x); }
 function strokeDecoShape(shape,r){
   switch(shape){
     case "circle": ctx.beginPath(); ctx.arc(0,0,r,0,6.29); ctx.stroke(); break;
-    case "triangle": ctx.beginPath();
-      for(let i=0;i<3;i++){ const a=-Math.PI/2+i*2.094; ctx[i?"lineTo":"moveTo"](Math.cos(a)*r,Math.sin(a)*r); }
-      ctx.closePath(); ctx.stroke(); break;
-    case "square": ctx.strokeRect(-r*.8,-r*.8,r*1.6,r*1.6); break;
-    case "hexagon": ctx.beginPath();
-      for(let i=0;i<6;i++){ const a=i*1.047; ctx[i?"lineTo":"moveTo"](Math.cos(a)*r,Math.sin(a)*r); }
-      ctx.closePath(); ctx.stroke(); break;
     case "heart": ctx.beginPath();
       ctx.moveTo(0,r*0.35);
       ctx.bezierCurveTo(-r*1.1,-r*0.5,-r*0.45,-r*1.1,0,-r*0.4);
       ctx.bezierCurveTo(r*0.45,-r*1.1,r*1.1,-r*0.5,0,r*0.35);
       ctx.closePath(); ctx.stroke(); break;
-    case "cross": ctx.lineCap="round";
-      ctx.beginPath(); ctx.moveTo(-r*.7,-r*.7); ctx.lineTo(r*.7,r*.7);
-      ctx.moveTo(r*.7,-r*.7); ctx.lineTo(-r*.7,r*.7); ctx.stroke(); break;
-    case "question":
+    case "hatena":
       ctx.font=`800 ${r*2}px ${fontFam()}`; ctx.textAlign="center"; ctx.textBaseline="middle";
       ctx.strokeText("？",0,0); ctx.textAlign="start"; break;
-    case "diamond": ctx.beginPath();
-      ctx.moveTo(0,-r); ctx.lineTo(r*.7,0); ctx.lineTo(0,r); ctx.lineTo(-r*.7,0);
-      ctx.closePath(); ctx.stroke(); break;
-    case "cloud": ctx.beginPath();
-      ctx.arc(-r*.55,r*.1,r*.5,Math.PI*0.4,Math.PI*1.6);
-      ctx.arc(0,-r*.25,r*.62,Math.PI*0.9,Math.PI*2.1);
-      ctx.arc(r*.55,r*.1,r*.5,Math.PI*1.4,Math.PI*0.6);
-      ctx.closePath(); ctx.stroke(); break;
+    case "bikkuri":
+      ctx.font=`800 ${r*2}px ${fontFam()}`; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.strokeText("！",0,0); ctx.textAlign="start"; break;
     case "burst": ctx.lineCap="round"; ctx.beginPath();
       for(let i=0;i<8;i++){ const a=i*0.785;
         ctx.moveTo(Math.cos(a)*r*0.55,Math.sin(a)*r*0.55);
         ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r); }
+      ctx.stroke(); break;
+    case "kirakira": ctx.beginPath(); // 4方向のキラッ
+      ctx.moveTo(0,-r); ctx.quadraticCurveTo(r*0.16,-r*0.16,r,0);
+      ctx.quadraticCurveTo(r*0.16,r*0.16,0,r);
+      ctx.quadraticCurveTo(-r*0.16,r*0.16,-r,0);
+      ctx.quadraticCurveTo(-r*0.16,-r*0.16,0,-r); ctx.stroke(); break;
+    case "hoshi": ctx.beginPath();
+      for(let i=0;i<10;i++){ const a=-Math.PI/2+i*Math.PI/5, rr=i%2?r*0.44:r;
+        const x=Math.cos(a)*rr,y=Math.sin(a)*rr; ctx[i?"lineTo":"moveTo"](x,y); }
+      ctx.closePath(); ctx.stroke(); break;
+    case "ase": ctx.beginPath(); // 汗のしずく2〜3滴
+      [[-r*0.4,0,r*0.32],[r*0.35,-r*0.15,r*0.26]].forEach(([dx,dy,rr])=>{
+        ctx.moveTo(dx,dy-rr); ctx.quadraticCurveTo(dx+rr,dy+rr*0.3,dx,dy+rr);
+        ctx.quadraticCurveTo(dx-rr,dy+rr*0.3,dx,dy-rr);
+      });
+      ctx.stroke(); break;
+    case "onpu": ctx.beginPath(); // 音符
+      ctx.moveTo(r*0.25,-r*0.75); ctx.lineTo(r*0.25,r*0.35);
+      ctx.moveTo(r*0.25,-r*0.75); ctx.quadraticCurveTo(r*0.85,-r*0.55,r*0.55,-r*0.1); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(-r*0.02,r*0.4,r*0.3,r*0.22,-0.35,0,6.29); ctx.fill(); break;
+    case "kamifubuki": // 紙吹雪：小さい紙片3枚
+      [[-r*0.5,-r*0.2,0.4],[r*0.1,r*0.35,-0.6],[r*0.5,-r*0.35,0.9]].forEach(([dx,dy,rot])=>{
+        ctx.save(); ctx.translate(dx,dy); ctx.rotate(rot);
+        ctx.strokeRect(-r*0.18,-r*0.12,r*0.36,r*0.24); ctx.restore();
+      }); break;
+    case "supiido": ctx.lineCap="round"; ctx.beginPath(); // スピード線
+      for(let i=-1;i<=1;i++){ ctx.moveTo(-r,i*r*0.35); ctx.lineTo(r,i*r*0.35*0.4); }
+      ctx.stroke(); break;
+    case "inazuma": ctx.lineCap="round"; ctx.lineJoin="round"; ctx.beginPath(); // 稲妻ジグザグ
+      ctx.moveTo(-r*0.3,-r); ctx.lineTo(r*0.15,-r*0.15); ctx.lineTo(-r*0.15,r*0.05); ctx.lineTo(r*0.3,r);
       ctx.stroke(); break;
   }
 }
@@ -2677,21 +2737,41 @@ function sectionIdxOf(lineIdx){ // セクション単位の通し番号（未設
   }
   return Math.floor(lineIdx/4);
 }
-function spawnDeco(x,y,fs,seed,lineIdx){
+// 明度を変える（同系統で明暗差ありの色・19-2「色」24%用）
+function shadeColor(hex,amt){
+  const n=parseInt(hex.slice(1),16);
+  const r=Math.max(0,Math.min(255,(n>>16)+amt)), g=Math.max(0,Math.min(255,((n>>8)&255)+amt)), b=Math.max(0,Math.min(255,(n&255)+amt));
+  return "#"+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1);
+}
+function decoShapeFor(mode,lineIdx,text){
+  if(mode!=="random") return mode;
+  // ★19-4：感情語が歌詞に含まれていれば、対応する種類を優先的に選ぶ（70%）
+  const emo=EMOTION_DECO.find(e=>e.kw.some(k=>text.includes(k)));
+  if(emo && hash01(lineIdx*41+3)<0.70) return emo.shapes[Math.floor(hash01(lineIdx*43+5)*emo.shapes.length)%emo.shapes.length];
+  return DECO_SHAPES[Math.floor(hash01(lineIdx*31+7)*DECO_SHAPES.length)];
+}
+// 19-4で形状を整理した際の旧名→新名（過去の保存プロジェクトとの後方互換）
+const DECO_LEGACY={triangle:"hoshi",square:"kamifubuki",hexagon:"circle",cross:"inazuma",diamond:"kirakira",question:"hatena",cloud:"kamifubuki"};
+function spawnDeco(x,y,fs,seed,lineIdx,textColor){
   if(decoPops.length>400) return; // あふれても既存のデコは消さない
-  const mode=decoOf(state.lines[lineIdx]||{});
+  let mode=decoOf(state.lines[lineIdx]||{});
   if(mode==="none") return;
-  const base=CH*0.068; // 画面基準・大きめ
+  if(DECO_LEGACY[mode]) mode=DECO_LEGACY[mode];
+  const shape=decoShapeFor(mode,lineIdx,(state.lines[lineIdx]||{}).text||""); // ★行番号ごとに固定（同じ行の図形は同じ種類）
   const count=1+(hash01(seed*1.7)<0.15?1:0); // 基本1個・たまに2個重なる
+  const size=(DECO_SIZE[shape]!=null?DECO_SIZE[shape]:0.30)*fs; // ★19-2：文字高さ基準のサイズ
+  const life0=DECO_LIFE[shape]!=null?DECO_LIFE[shape]:0.5;
+  const curve=DECO_CURVE[shape]||"grow";
   for(let i=0;i<count;i++){
-    // ★ランダムは行番号ごとに固定（同じ行の図形は同じ種類）
-    const shape=(mode==="random")?DECO_SHAPES[Math.floor(hash01(lineIdx*31+7)*DECO_SHAPES.length)]:mode;
+    // ★19-2「色」：文字と同色61%／同系統で明暗差あり24%／完全別色15%
+    const cr=hash01(seed*13+i*17);
+    const color=cr<0.61?textColor : cr<0.85?shadeColor(textColor,(hash01(seed*19+i)<0.5?-45:45)) : DECO_COLORS[(seed+i)%DECO_COLORS.length];
     decoPops.push({
-      x:x+(hash01(seed*3+i*5)-0.5)*base*2.0,
-      y:y+(hash01(seed*5+i*3)-0.5)*base*1.8,
-      shape, color:DECO_COLORS[(seed+i)%DECO_COLORS.length],
-      t:0, life:0.6+hash01(seed+i)*0.25,
-      r0:base*(0.9+hash01(seed*7+i)*0.7),
+      x:x+(hash01(seed*3+i*5)-0.5)*size*1.4,
+      y:y+(hash01(seed*5+i*3)-0.5)*size*1.2,
+      shape, color, curve,
+      t:0, life:life0*(0.85+hash01(seed+i)*0.3),
+      r0:size*(0.9+hash01(seed*7+i)*0.4),
       rot:(hash01(seed*11+i)-0.5)*0.9,
     });
   }
@@ -3061,13 +3141,26 @@ function drawDecoPops(dt){
   decoPops=decoPops.filter(p=>p.t<p.life); // …寿命切れを描く前に除外（チカつき根絶）
   for(const p of decoPops){
     const q=Math.min(1,p.t/p.life);
-    const r=p.r0*(0.55+q*1.15); // とけるように広がりながら…
+    let r,alpha,dy=0;
+    // ★19-2：出現・消失の3アーキタイプ（curve）
+    if(p.curve==="flash"){ // 一瞬パッと出て素早く消える（集中線・キラッ・ビックリ線等）
+      r=p.r0*(1.08-0.12*q);
+      alpha=q<0.12?q/0.12:Math.pow(1-(q-0.12)/0.88,1.4);
+    }else if(p.curve==="drift"){ // 出現しながら流れる（音符は上へ、汗は下へ）
+      r=p.r0*(0.6+q*0.7);
+      alpha=Math.pow(1-q,2.0);
+      const dir=p.shape==="ase"?1:-1;
+      dy=dir*p.r0*0.7*q;
+    }else{ // grow：にゅるっと拡大して普通に消える（ハート・星・丸・紙吹雪・？等）
+      r=p.r0*(0.55+q*1.15);
+      alpha=Math.pow(1-q,2.2);
+    }
     ctx.save();
-    ctx.translate(p.x,p.y);
+    ctx.translate(p.x,p.y+dy);
     ctx.rotate(p.rot*q*0.5);
-    ctx.globalAlpha=Math.pow(1-q,2.2); // …最後までなめらかに消える
+    ctx.globalAlpha=Math.max(0,Math.min(1,alpha));
     ctx.lineWidth=Math.max(2.2, p.r0*0.20*(1-q*0.3));
-    ctx.strokeStyle=p.color;
+    ctx.strokeStyle=p.color; ctx.fillStyle=p.color;
     strokeDecoShape(p.shape,r);
     ctx.restore();
   }
@@ -3145,22 +3238,27 @@ function drawLyric(t,lineIdx){
   const color=overlay?state.textStyle.colorOverlay:state.textStyle.color;
 
   // デコ：文字が出た瞬間に線画シェイプがはじける（描画は文字の後ろ）
+  // ★19-2：実測では52%が「強調語」、23%が「語尾」、16%が「行頭」、9%が「ランダム」に付く。
+  //   *キーワード*で囲んだ強調語を最優先の打点対象にする（従来は完全ランダムだった）。
   const lineBased=(motion==="fuwa"||motion==="zoom"||motion==="slide");
   if(decoOf(line)!=="none"){
     if(lineBased){
       const key=lineIdx+":line";
       if(t>=t0 && !decoMark.has(key)){
         decoMark.add(key);
-        spawnDeco(positions[0].x,positions[0].y,fs,lineIdx*97,lineIdx); // 最初の文字には必ず
-        for(let k=2;k<n;k+=Math.max(2,Math.floor(n/4))) spawnDeco(positions[k].x,positions[k].y,fs,lineIdx*97+k,lineIdx);
+        spawnDeco(positions[0].x,positions[0].y,fs,lineIdx*97,lineIdx,color); // 行頭には必ず
+        for(let k=1;k<n;k++){
+          if(emphMask[k]&&!emphMask[k-1]) spawnDeco(positions[k].x,positions[k].y,fs,lineIdx*97+k,lineIdx,color); // 強調語の先頭
+        }
       }
     }else{
       for(let k=0;k<n;k++){
         const tk=t0+k*interval, key=lineIdx+":"+k;
         if(t>=tk && !decoMark.has(key)){
           decoMark.add(key);
-          // ★行の最初の文字には必ず、あとは3文字に1つくらい
-          if(k===0||hash01(lineIdx*53+k*29)<0.30) spawnDeco(positions[k].x,positions[k].y,fs,lineIdx*97+k,lineIdx);
+          const isEmphStart=emphMask[k]&&(k===0||!emphMask[k-1]);
+          const p=isEmphStart?0.85:(k===0?1:(k===n-1?0.25:0.08));
+          if(hash01(lineIdx*53+k*29)<p) spawnDeco(positions[k].x,positions[k].y,fs,lineIdx*97+k,lineIdx,color);
         }
       }
     }
