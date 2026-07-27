@@ -994,6 +994,7 @@ function renderRowPreview(cv2,z){ // メインcanvasに描いて縮小コピー�
 function renderLineList(){
   invalidateEnergyCache(); // 行やセクションが変わったら熱量キャッシュを捨てる（デコの量が追従する）
   invalidateCategoryCache(); // 歌詞が変わったらカテゴリ判定もやり直す（17-6）
+  invalidateStickerLayoutCache(); // 行数やセクションが変わったらステッカーの基本配置も作り直す（23章）
   const box=$("lineList"); box.innerHTML="";
   const zones=secZones(); let zi=0;
   let prevSec=null;
@@ -1985,7 +1986,7 @@ function exportProject(){
 /* ================= 描画 ================= */
 const cv=$("pvCanvas"), ctx=cv.getContext("2d");
 let CW=cv.width, CH=cv.height;
-function setRes(h){ const w=Math.round(h*16/9); cv.width=w; cv.height=h; CW=w; CH=h; }
+function setRes(h){ const w=Math.round(h*16/9); cv.width=w; cv.height=h; CW=w; CH=h; if(typeof invalidateStickerLayoutCache==="function") invalidateStickerLayoutCache(); }
 function fmt(t){ if(!isFinite(t))t=0; const m=Math.floor(t/60); return m+":"+(t%60).toFixed(2).padStart(5,"0"); }
 function fontFam(){
   const sel=$("fontSelect").value;
@@ -3026,39 +3027,115 @@ function drawStickerShape(kind,R){
       ctx.beginPath(); ctx.arc(0,0,R*0.82,0,6.29); ctx.stroke(); break;
   }
 }
-/* ステッカーの寿命は「行の窓」に紐づける（lineEndのmaxHold上限は歌詞表示用なので使わない。
-   長い間奏でもステッカーは途切れず続くように、次の行が始まるまでを窓とする） */
-function stickerWindow(li){
+/* ================= ステッカー：調整用の設定値（23章） =================
+   手作業で細かく変えたくなったとき、ここだけ見れば済むように定数をまとめてある。
+   本文側のロジックはこの値を参照するだけで、数値をここで変える分には他を触らなくてよい。 */
+const STICKER_CONFIG={
+  stagger:0.02,           // 1個ずつ出す間隔（秒）
+  popIn:{peta:0.02, grow:0.08},   // 出現にかける時間（秒）
+  popOut:{peta:0.03, grow:0.12},  // 退場にかける時間（秒）
+  petaRatio:0.70,         // 「パッと貼る」の比率（残りは「にゅるっと」）
+  wave2EnergyMin:0.65,    // 2波目を出す熱量のしきい値
+  wave2MinZoneLen:1.2,    // 2波目を出すセクションの最短の長さ（秒）
+  wave2MidFrac:0.55,      // セクションの何%地点で2波目を出すか
+  edgeMargin:0.07,        // 画面端からの最小マージン（画面短辺に対する比率）
+  radiusBand:[0.62,1.00], // 中心からの距離（画面短辺に対する比率）。中心＝歌詞の定位置を避ける
+  relaxIters:8,           // 重なり回避の緩和計算の反復回数
+  relaxMinDistMult:1.20,  // 「これ未満は重なっている」とみなす距離（お互いの半径の合計に対する倍率）
+  keepOutPushMargin:0.75, // 文字・キャラを避けるとき、はみ出させる余白（半径に対する倍率）
+};
+/* ステッカーの寿命は「セクション（メタタグ帯）の窓」に紐づける（19-4：以前は行ごとだったが
+   「行ごとに繰り返されて忙しい」というフィードバックにより、セクション単位に変更した）。
+   lineEndのmaxHold上限は歌詞表示用なので使わない＝長い間奏でも途切れない。 */
+function stickerWindow(li,zoneIdx){
+  const zs=secZones();
+  if(zs.length && zs[zoneIdx]){
+    const z=zs[zoneIdx];
+    const t0=lineTime(state.lines[z.idx]);
+    const nz=zs[zoneIdx+1];
+    const tEnd=nz?lineTime(state.lines[nz.idx]):(audio.duration||t0+30);
+    return [t0,tEnd];
+  }
+  // フォールバック：セクション未設定の曲は行単位のまま
   const t0=lineTime(state.lines[li]);
   const next=(li+1<state.lines.length)?lineTime(state.lines[li+1]):t0+8;
   return [t0,next];
 }
-function drawStickers(t){
-  if(!state.stickerOn) return;
-  const li=currentLineIndex(t); if(li<0) return;
-  const [t0,tEnd]=stickerWindow(li);
-  const e=energyAt(t), pool=stkPool(e);
-  const K=Math.max(0,Math.round(stickerCount(e)*(state.stickerAmt||1)));
-  const [pCat,sCat,zoneIdx]=categoryAt(t);
-  const S=Math.min(CW,CH);
-  const keepOut=charKeepOut();
-  // ★19-4：行ごとにコロコロ変わる／途中から現れるステッカーが「目障り」というフィードバックに対応。
-  //   時間で自由に生まれ変わる方式をやめ、「行が始まる瞬間に一斉に出て、次の行が始まる瞬間に
-  //   一斉に消える」方式にした。完全同時だと機械的なので、1個ずつ0.035秒ずつ波のようにずらす。
-  //   熱量が高い（サビ等）行だけ、行の半ば過ぎにもう一度小さな波（2波目）を追加する。
-  const STAGGER=0.035, POP_IN=0.12, POP_OUT=0.20;
-  const wave2=(e>=0.65)&&(tEnd-t0>1.2);
-  const mid=t0+(tEnd-t0)*0.55;
+/* ★歌詞の現在の表示領域（干渉回避用）。drawLyricとは別に、位置情報だけを軽量に再計算する
+   （drawLyricは1文字ずつのモーション・デコ発生などの副作用を持つため、呼び直しは避けたい）。
+   歌詞の配置ロジック（すきま配置／中央下／かぶせ／円形アーチ）が将来変わっても、
+   ここは「今実際にどこに文字があるか」を都度読みに行くだけなので、そのまま追従する。 */
+function textKeepOut(t,lineIdx){
+  if(lineIdx<0) return [];
+  const line=state.lines[lineIdx];
+  if(!line||line.gap) return [];
+  const {clean:cleanText}=parseEmphasis(line.text);
+  if(!cleanText) return [];
+  const style=styleOf(line);
+  let lay;
+  if(style==="arc") lay=arcLayout(cleanText,t,lineIdx);
+  else lay=layoutLine(cleanText,pickZone(t,lineIdx,style));
+  const {positions,fs}=lay;
+  if(!positions.length) return [];
+  const xs=positions.map(p=>p.x), ys=positions.map(p=>p.y);
+  return [{x0:Math.min(...xs)-fs*0.6, x1:Math.max(...xs)+fs*0.6,
+           y0:Math.min(...ys)-fs*0.7, y1:Math.max(...ys)+fs*0.7}];
+}
+/* ★セクション単位の基本配置（重なり回避＋バランス）。ゾーン＋スロット数だけで決まるので
+   セクション内は再計算せずキャッシュする。角度をK分割してから、近すぎる組だけ少しずつ
+   引き離す簡易緩和を行う＝完全ランダムより整った配置になり、かつ決定論的（毎回同じ結果）。 */
+let _stickerLayoutCache=new Map();
+function invalidateStickerLayoutCache(){ _stickerLayoutCache.clear(); }
+function computeStickerBaseLayout(zoneIdx,K,S){
+  const key=zoneIdx+":"+K+":"+(state.stickerSize||1);
+  if(_stickerLayoutCache.has(key)) return _stickerLayoutCache.get(key);
+  const [rMin,rMax]=STICKER_CONFIG.radiusBand;
+  const pts=[];
   for(let j=0;j<K;j++){
-    const isWave2=wave2&&(j%2===1);
-    const spawnT=(isWave2?mid:t0)+j*STAGGER;
-    const deathT=tEnd;
-    if(t<spawnT-0.02||t>deathT+POP_OUT+0.05) continue;
-    // ---- スロット固有：セクション（ゾーン）＋スロット番号で決まる。
-    //   行が変わってもセクションが同じなら同じ絵になる＝「共通のものを使う」の実現
     const sd=zoneIdx*100000+j*977+7;
     const sf=hash01(sd*1.7+3.3);
     const R=S*(0.038+sf*0.065)*(state.stickerSize||1);
+    const sector=6.283/K;
+    const jitter=(hash01(sd*2.1)-0.5)*sector*0.7; // セクター内で軽くばらす（角度方向の均等割りは保つ）
+    pts.push({j,sd,R, ang:j*sector+jitter, rad:rMin+hash01(sd*3.7)*(rMax-rMin)});
+  }
+  // 簡易緩和：半径換算の距離が近すぎるペアを、角度方向にわずかに押し離す
+  for(let iter=0;iter<STICKER_CONFIG.relaxIters;iter++){
+    for(let a=0;a<pts.length;a++)for(let b=a+1;b<pts.length;b++){
+      const A=pts[a],B=pts[b];
+      const ax=Math.cos(A.ang)*A.rad*CW*0.5, ay=Math.sin(A.ang)*A.rad*CH*0.52;
+      const bx=Math.cos(B.ang)*B.rad*CW*0.5, by=Math.sin(B.ang)*B.rad*CH*0.52;
+      const dist=Math.hypot(bx-ax,by-ay);
+      const minDist=(A.R+B.R)*STICKER_CONFIG.relaxMinDistMult;
+      if(dist>0.001 && dist<minDist){
+        const push=(minDist-dist)/minDist*0.05;
+        A.ang-=push; B.ang+=push;
+      }
+    }
+  }
+  _stickerLayoutCache.set(key,pts);
+  return pts;
+}
+function drawStickers(t){
+  if(!state.stickerOn) return;
+  const li=currentLineIndex(t); if(li<0) return;
+  const e=energyAt(t), pool=stkPool(e);
+  const K=Math.max(0,Math.round(stickerCount(e)*(state.stickerAmt||1)));
+  const [pCat,sCat,zoneIdx]=categoryAt(t);
+  const [t0,tEnd]=stickerWindow(li,zoneIdx);
+  const S=Math.min(CW,CH);
+  // ★文字・キャラの両方を避ける。文字側は現在の配置ロジック（将来変わっても）を都度読みに行くので追従する
+  const keepOut=[...charKeepOut(), ...textKeepOut(t,li)];
+  const CFG=STICKER_CONFIG;
+  const wave2=(e>=CFG.wave2EnergyMin)&&(tEnd-t0>CFG.wave2MinZoneLen);
+  const mid=t0+(tEnd-t0)*CFG.wave2MidFrac;
+  const base=computeStickerBaseLayout(zoneIdx,K,S);
+  for(let j=0;j<K;j++){
+    const isWave2=wave2&&(j%2===1);
+    const spawnT=(isWave2?mid:t0)+j*CFG.stagger;
+    const deathT=tEnd;
+    if(t<spawnT-0.02||t>deathT+CFG.popOut.grow+0.05) continue;
+    const {sd,R}=base[j];
     // ---- 17-6：歌詞の意味カテゴリからモチーフを選ぶ（主70%／副30%）。
     //   該当カテゴリが無いセクションは、従来通り熱量ベースのランダムに戻す
     let kind, col, imgAsset=null;
@@ -3076,28 +3153,26 @@ function drawStickers(t){
       kind=pool[Math.floor(hash01(sd*1.9)*pool.length)%pool.length];
       col=STK_PASTEL[Math.floor(hash01(sd*2.7)*STK_PASTEL.length)%STK_PASTEL.length];
     }
-    // 中央（歌詞の居場所）を避けて外周寄りに置く。位置だけは行ごとに少し動かして単調さを防ぐ
-    const psd=sd+li*131;
-    const ang=hash01(psd*2.1)*6.283, rad=0.60+hash01(psd*3.7)*0.42;
-    const m=S*0.07;
+    // ---- 位置：セクション単位の基本配置（重なり回避済み）に、文字・キャラを避ける押し出しを重ねる
+    const {ang,rad}=base[j];
+    const m=S*CFG.edgeMargin;
     let x=Math.max(m,Math.min(CW-m, CW/2+Math.cos(ang)*rad*CW*0.50));
     let y=Math.max(m,Math.min(CH-m, CH/2+Math.sin(ang)*rad*CH*0.52));
-    // キャラの顔・主役の部分を避ける（端に重なるのはOK）。近い方の横に押し出す
     for(const k of keepOut){
       if(x+R*0.7>k.x0 && x-R*0.7<k.x1 && y+R*0.7>k.y0 && y-R*0.7<k.y1){
-        const toL=k.x0-R*0.75, toR=k.x1+R*0.75;
+        const toL=k.x0-R*CFG.keepOutPushMargin, toR=k.x1+R*CFG.keepOutPushMargin;
         x=(Math.abs(x-toL)<Math.abs(x-toR))?toL:toR;
         if(x<m||x>CW-m) y=k.y1+R*0.8; // 横に逃げ場がなければ下（足元）へ
         x=Math.max(m,Math.min(CW-m,x));
         y=Math.max(m,Math.min(CH-m,y));
       }
     }
-    // ---- 出現・退場スタイル：「基本は急に出て急に消える（ペタッ）」というフィードバックに対応。
-    //   ペタッ＝出現0.035秒・退場0.05秒のセットでほぼ瞬時に切り替わる。これを既定（70%）にし、
-    //   残り30%だけ「にゅるっと」（出現0.12秒・退場0.20秒、バウンド付き）を混ぜて単調さを防ぐ。
-    const isPeta=hash01(sd*6.7)<0.70;
-    const popInDur=isPeta?0.035:POP_IN;
-    const popOutDur=isPeta?0.05:POP_OUT;
+    // ---- 出現・退場スタイル：「基本は急に出て急に消える（ペタッ）」。
+    //   ペタッ＝ほぼ瞬時に切り替わる。これを既定（70%）にし、残り30%だけ
+    //   「にゅるっと」（バウンド付き）を混ぜて単調さを防ぐ。時間は全体的に短めにした。
+    const isPeta=hash01(sd*6.7)<CFG.petaRatio;
+    const popInDur=isPeta?CFG.popIn.peta:CFG.popIn.grow;
+    const popOutDur=isPeta?CFG.popOut.peta:CFG.popOut.grow;
     const qi=Math.max(0,Math.min(1,(t-spawnT)/popInDur)), qo=Math.max(0,Math.min(1,(deathT-t)/popOutDur));
     const pop=isPeta?1:(1+0.22*Math.sin(Math.min(1,qi)*Math.PI)*(1-qi*0.35)); // ペタッはバウンドしない
     const sc=qi*pop*(0.55+qo*0.45);
