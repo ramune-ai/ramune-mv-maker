@@ -16,7 +16,7 @@
   header{background:linear-gradient(120deg,var(--soda),var(--soda-deep)); color:#fff; padding:14px 20px;}
   header h1{margin:0; font-size:1.15rem;}
   header .sub{font-size:.75rem; opacity:.85;}
-  main{max-width:1120px; margin:0 auto; padding:16px;}
+  main{max-width:1500px; margin:0 auto; padding:16px;}
   .tabs{display:flex; gap:8px; margin:4px 0 14px;}
   .tabs button{flex:1; border:none; border-radius:var(--radius); padding:10px 6px; font:inherit; font-weight:700;
     cursor:pointer; background:#DFF2FE; color:var(--soda-deep); transition:.15s;}
@@ -151,10 +151,8 @@
       <label class="filebtn" style="background:#E4F3FC;color:var(--soda-deep);">📄 歌詞txtを選ぶ<input type="file" id="lyricTxtFile" accept=".txt,text/plain"></label>
       <span class="note">貼り付け・D&Dの代わりにファイル選択でも読み込めます</span>
     </div>
-    <div style="overflow-x:auto; max-width:100%;">
     <textarea id="sectionText" placeholder="[Verse 1]&#10;ずっと しまってた 小さな宝物&#10;…（元の歌詞をぜんぶ貼り付け or .txtをドロップ）"
-      style="min-height:340px; font-size:1.05rem; line-height:1.7; width:1200px;"></textarea>
-    </div>
+      style="min-height:340px; font-size:1.05rem; line-height:1.7; width:100%; box-sizing:border-box;"></textarea>
     <div class="row">
       <button class="btn pink" onclick="tapStart()">🎤 タップ打ち込み（JSONをここで作る）</button>
       <button class="btn ghost" id="snapBtn" onclick="snapLyricTiming()">🎯 行のタイミングを歌に吸着</button>
@@ -2735,19 +2733,38 @@ function categoryScores(text){
   return LYRIC_CATEGORIES.map(c=>({cat:c,score:c.kw.reduce((a,k)=>a+(s.includes(k)?1:0),0)}))
     .filter(x=>x.score>0).sort((a,b)=>b.score-a.score);
 }
-let _categoryByLine=null;
-function invalidateCategoryCache(){ _categoryByLine=null; }
-function categoryByLine(){ // 行番号→[主カテゴリ, 副カテゴリ]（該当なしはnull）
-  if(_categoryByLine) return _categoryByLine;
-  _categoryByLine=state.lines.map(l=>{
-    if(l.gap) return [null,null];
-    const sc=categoryScores(parseEmphasis(l.text).clean);
-    return [sc[0]?sc[0].cat:null, sc[1]?sc[1].cat:null];
+function invalidateCategoryCache(){ _categoryByZone=null; _zoneIndexByLine=null; }
+/* ★19-0：判定の単位を「行」から「セクション」へ上げた。
+   行ごとにモチーフが変わるのは「目が忙しい／うざったい」というフィードバックのため、
+   セクション（ゾーン）内の全行のキーワードを合算してから主・副カテゴリを決め、
+   そのセクションが続く間はずっと同じモチーフの顔ぶれを使う。 */
+let _categoryByZone=null, _zoneIndexByLine=null;
+function categoryByLine(){ // 行番号→[主カテゴリ, 副カテゴリ, ゾーン番号]
+  if(_categoryByZone) return _categoryByZone;
+  const n=state.lines.length;
+  const zs=secZones();
+  const zoneOf=new Array(n).fill(0);
+  const ranges=zs.length?zs:[{idx:0,z:n}];
+  ranges.forEach((z,zi)=>{ const to=(zi+1<ranges.length)?ranges[zi+1].idx:n;
+    for(let i=(zi===0?0:z.idx);i<to;i++) zoneOf[i]=zi; });
+  const scoreByZone=ranges.map(()=>({})); // zi → {catId: score}
+  state.lines.forEach((l,i)=>{
+    if(l.gap) return;
+    for(const {cat,score} of categoryScores(parseEmphasis(l.text).clean)){
+      const bag=scoreByZone[zoneOf[i]]; bag[cat.id]=(bag[cat.id]||0)+score;
+    }
   });
-  return _categoryByLine;
+  const catById=Object.fromEntries(LYRIC_CATEGORIES.map(c=>[c.id,c]));
+  const topByZone=scoreByZone.map(bag=>{
+    const sorted=Object.entries(bag).sort((a,b)=>b[1]-a[1]);
+    return [sorted[0]?catById[sorted[0][0]]:null, sorted[1]?catById[sorted[1][0]]:null];
+  });
+  _zoneIndexByLine=zoneOf;
+  _categoryByZone=state.lines.map((l,i)=>l.gap?[null,null,zoneOf[i]]:[...topByZone[zoneOf[i]],zoneOf[i]]);
+  return _categoryByZone;
 }
 function categoryAt(t){
-  const arr=categoryByLine(); if(!arr.length) return [null,null];
+  const arr=categoryByLine(); if(!arr.length) return [null,null,0];
   const li=currentLineIndex(t);
   return arr[Math.max(0,Math.min(arr.length-1,li))];
 }
@@ -2914,27 +2931,41 @@ function drawStickerShape(kind,R){
       ctx.beginPath(); ctx.arc(0,0,R*0.82,0,6.29); ctx.stroke(); break;
   }
 }
+/* ステッカーの寿命は「行の窓」に紐づける（lineEndのmaxHold上限は歌詞表示用なので使わない。
+   長い間奏でもステッカーは途切れず続くように、次の行が始まるまでを窓とする） */
+function stickerWindow(li){
+  const t0=lineTime(state.lines[li]);
+  const next=(li+1<state.lines.length)?lineTime(state.lines[li+1]):t0+8;
+  return [t0,next];
+}
 function drawStickers(t){
   if(!state.stickerOn) return;
+  const li=currentLineIndex(t); if(li<0) return;
+  const [t0,tEnd]=stickerWindow(li);
   const e=energyAt(t), pool=stkPool(e);
   const K=Math.max(0,Math.round(stickerCount(e)*(state.stickerAmt||1)));
+  const [pCat,sCat,zoneIdx]=categoryAt(t);
   const S=Math.min(CW,CH);
   const keepOut=charKeepOut();
+  // ★19-4：行ごとにコロコロ変わる／途中から現れるステッカーが「目障り」というフィードバックに対応。
+  //   時間で自由に生まれ変わる方式をやめ、「行が始まる瞬間に一斉に出て、次の行が始まる瞬間に
+  //   一斉に消える」方式にした。完全同時だと機械的なので、1個ずつ0.035秒ずつ波のようにずらす。
+  //   熱量が高い（サビ等）行だけ、行の半ば過ぎにもう一度小さな波（2波目）を追加する。
+  const STAGGER=0.035, POP_IN=0.12, POP_OUT=0.20;
+  const wave2=(e>=0.65)&&(tEnd-t0>1.2);
+  const mid=t0+(tEnd-t0)*0.55;
   for(let j=0;j<K;j++){
-    // ---- スロット固有（生まれ変わっても変わらない）：大きさと寿命を相関させる
-    const sf=hash01(j*1.7+3.3);            // 0..1
-    const life=0.9+sf*3.6;                 // 0.9〜4.5秒（小さいデコほど短命：14-5）
-    const cyc=life+0.15+hash01(j*4.1+9.7)*0.45; // わずかに間を空けて生え替わる
-    const u=(t+hash01(j*8.9+1.1)*cyc)/cyc;
-    const gen=Math.floor(u);
-    const q=(u-gen)*cyc/life;              // 0→1 が生存区間。1超は生え替わりの隙間
-    if(q>=1) continue;
-    // ---- 個体固有（生まれ変わるたびに変わる）
-    const sd=j*977+gen*31+7;
+    const isWave2=wave2&&(j%2===1);
+    const spawnT=(isWave2?mid:t0)+j*STAGGER;
+    const deathT=tEnd;
+    if(t<spawnT-0.02||t>deathT+POP_OUT+0.05) continue;
+    // ---- スロット固有：セクション（ゾーン）＋スロット番号で決まる。
+    //   行が変わってもセクションが同じなら同じ絵になる＝「共通のものを使う」の実現
+    const sd=zoneIdx*100000+j*977+7;
+    const sf=hash01(sd*1.7+3.3);
     const R=S*(0.038+sf*0.065);
     // ---- 17-6：歌詞の意味カテゴリからモチーフを選ぶ（主70%／副30%）。
-    //   該当カテゴリが無い行（キーワードに引っかからない）は、従来通り熱量ベースのランダムに戻す
-    const [pCat,sCat]=categoryAt(t);
+    //   該当カテゴリが無いセクションは、従来通り熱量ベースのランダムに戻す
     let kind, col, imgAsset=null;
     if(pCat){
       const cat=(sCat&&hash01(sd*2.3)>0.70)?sCat:pCat;
@@ -2950,8 +2981,9 @@ function drawStickers(t){
       kind=pool[Math.floor(hash01(sd*1.9)*pool.length)%pool.length];
       col=STK_PASTEL[Math.floor(hash01(sd*2.7)*STK_PASTEL.length)%STK_PASTEL.length];
     }
-    // 中央（歌詞の居場所）を避けて外周寄りに置く
-    const ang=hash01(sd*2.1)*6.283, rad=0.60+hash01(sd*3.7)*0.42;
+    // 中央（歌詞の居場所）を避けて外周寄りに置く。位置だけは行ごとに少し動かして単調さを防ぐ
+    const psd=sd+li*131;
+    const ang=hash01(psd*2.1)*6.283, rad=0.60+hash01(psd*3.7)*0.42;
     const m=S*0.07;
     let x=Math.max(m,Math.min(CW-m, CW/2+Math.cos(ang)*rad*CW*0.50));
     let y=Math.max(m,Math.min(CH-m, CH/2+Math.sin(ang)*rad*CH*0.52));
@@ -2966,7 +2998,7 @@ function drawStickers(t){
       }
     }
     // ---- 出現0.12秒／退場0.20秒（14-5）。退場は「縮小＋透明化」
-    const qi=Math.min(1,q*life/0.12), qo=Math.min(1,(1-q)*life/0.20);
+    const qi=Math.max(0,Math.min(1,(t-spawnT)/POP_IN)), qo=Math.max(0,Math.min(1,(deathT-t)/POP_OUT));
     const pop=1+0.22*Math.sin(Math.min(1,qi)*Math.PI)*(1-qi*0.35); // ぷるっと出る
     const sc=qi*pop*(0.55+qo*0.45);
     if(sc<=0.01) continue;
