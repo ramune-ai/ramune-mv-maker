@@ -349,7 +349,10 @@
     <div class="row">
       <label><input type="checkbox" id="stickerChk" style="width:auto;"> 🎀 デコステッカー（手描き風の音符・ハート等）</label>
       <label style="flex:0 0 auto;">量
-        <input type="range" id="stickerAmt" min="0.4" max="2" step="0.1" value="1" style="width:120px; vertical-align:middle;">
+        <input type="range" id="stickerAmt" min="0.2" max="1.5" step="0.05" value="1" style="width:120px; vertical-align:middle;">
+      </label>
+      <label style="flex:0 0 auto;">大きさ
+        <input type="range" id="stickerSize" min="0.4" max="2.5" step="0.1" value="1" style="width:120px; vertical-align:middle;">
       </label>
       <label style="flex:0 0 auto;">揺れ
         <input type="range" id="stickerBoil" min="0" max="20" step="0.5" value="6" style="width:120px; vertical-align:middle;">
@@ -1882,7 +1885,7 @@ function gatherSettings(){
     fx:{always:$("fxAlways").value}, // 個別の背景・キャラ・エフェクトは行タイムライン(state.lines[].bg/ch/fx)側が正
     easeDefault:{...state.easeDefault}, easeApply:!!state.easeApply,
     textStyle:{...state.textStyle}, currentTheme:state.currentTheme, fxBlend:!!state.fxBlend,
-    stickerOn:!!state.stickerOn, stickerAmt:+state.stickerAmt||1, stickerBoil:+state.stickerBoil,
+    stickerOn:!!state.stickerOn, stickerAmt:+state.stickerAmt||1, stickerSize:+state.stickerSize||1, stickerBoil:+state.stickerBoil,
     stickerUnifyBoil:!!state.stickerUnifyBoil,
     bgs:state.bgs.map(b=>({name:b.name})),
     chars:state.chars.map(c=>({name:c.name,keyMode:c.keyMode,keyStrength:c.keyStrength})),
@@ -1910,6 +1913,7 @@ function applySettings(s){
   if(typeof s.fxBlend==="boolean"){ state.fxBlend=s.fxBlend; if($("fxBlendChk")){ $("fxBlendChk").checked=s.fxBlend; updateFxBlendStatus(); } }
   if(typeof s.stickerOn==="boolean"){ state.stickerOn=s.stickerOn; if($("stickerChk")) $("stickerChk").checked=s.stickerOn; }
   if(typeof s.stickerAmt==="number"){ state.stickerAmt=s.stickerAmt; if($("stickerAmt")) $("stickerAmt").value=s.stickerAmt; }
+  if(typeof s.stickerSize==="number"){ state.stickerSize=s.stickerSize; if($("stickerSize")) $("stickerSize").value=s.stickerSize; }
   if(typeof s.stickerBoil==="number"){ state.stickerBoil=s.stickerBoil; if($("stickerBoil")) $("stickerBoil").value=s.stickerBoil; }
   if(typeof s.stickerUnifyBoil==="boolean"){ state.stickerUnifyBoil=s.stickerUnifyBoil; if($("stickerUnifyChk")) $("stickerUnifyChk").checked=s.stickerUnifyBoil; }
   updateStickerStatus();
@@ -2036,7 +2040,8 @@ document.addEventListener("DOMContentLoaded",initFxBlendToggle);
 
 /* --- デコステッカー（14章）のON/OFFと量 --- */
 state.stickerOn=true;   // 既定ON。OFFにすれば従来の見た目と直接見比べられる
-state.stickerAmt=1.0;   // 量の倍率（0.4〜2.0）。曲やテーマに合わせて手で調整できる余地
+state.stickerAmt=1.0;   // 量の倍率（0.2〜1.5・細かく調整）。曲やテーマに合わせて手で調整できる余地
+state.stickerSize=1.0;  // 大きさの倍率（0.4〜2.5）
 state.stickerBoil=6;    // 揺れの強さの倍率（0〜20）。種類ごとの比率は保ったまま全体を強める
 state.stickerUnifyBoil=true; // 既定：全ステッカーで揺れ方を統一（セル画の一体感）
 function initStickerToggle(){
@@ -2049,6 +2054,11 @@ function initStickerToggle(){
   if(sl){
     sl.value=state.stickerAmt;
     sl.oninput=()=>{ state.stickerAmt=+sl.value; updateStickerStatus(); drawFrame(effT()); };
+  }
+  const sz=$("stickerSize");
+  if(sz){
+    sz.value=state.stickerSize;
+    sz.oninput=()=>{ state.stickerSize=+sz.value; updateStickerStatus(); drawFrame(effT()); };
   }
   const sb=$("stickerBoil");
   if(sb){
@@ -2065,7 +2075,8 @@ function initStickerToggle(){
 function updateStickerStatus(){
   const s=$("stickerStatus"); if(!s) return;
   s.textContent=state.stickerOn
-    ?("今：ON（量 ×"+(+state.stickerAmt).toFixed(1)+"／揺れ ×"+(+state.stickerBoil).toFixed(1)+
+    ?("今：ON（量 ×"+(+state.stickerAmt).toFixed(2)+"／大きさ ×"+(+state.stickerSize).toFixed(1)+
+      "／揺れ ×"+(+state.stickerBoil).toFixed(1)+
       "／揺れ方："+(state.stickerUnifyBoil?"統一":"種類ごと（GPT表）")+"）")
     :"今：OFF（デコなし。従来の見た目）";
 }
@@ -2967,7 +2978,7 @@ function drawStickers(t){
     //   行が変わってもセクションが同じなら同じ絵になる＝「共通のものを使う」の実現
     const sd=zoneIdx*100000+j*977+7;
     const sf=hash01(sd*1.7+3.3);
-    const R=S*(0.038+sf*0.065);
+    const R=S*(0.038+sf*0.065)*(state.stickerSize||1);
     // ---- 17-6：歌詞の意味カテゴリからモチーフを選ぶ（主70%／副30%）。
     //   該当カテゴリが無いセクションは、従来通り熱量ベースのランダムに戻す
     let kind, col, imgAsset=null;
@@ -3001,13 +3012,13 @@ function drawStickers(t){
         y=Math.max(m,Math.min(CH-m,y));
       }
     }
-    // ---- 出現スタイル：「にゅるっと拡大」だけでなく「パッと貼る（ペタッ）」も追加。
-    //   ユーザーの感覚では、シールを貼るような即座の出現の方が主役でよいとのことなので
-    //   ペタッを70%・にゅるっとを30%の比率にした（既存のカテゴリ主従70/30と同じ設計言語）。
+    // ---- 出現・退場スタイル：「基本は急に出て急に消える（ペタッ）」というフィードバックに対応。
+    //   ペタッ＝出現0.035秒・退場0.05秒のセットでほぼ瞬時に切り替わる。これを既定（70%）にし、
+    //   残り30%だけ「にゅるっと」（出現0.12秒・退場0.20秒、バウンド付き）を混ぜて単調さを防ぐ。
     const isPeta=hash01(sd*6.7)<0.70;
-    const popInDur=isPeta?0.035:POP_IN; // ペタッはほぼ一瞬でフルサイズになる
-    // ---- 退場0.20秒（14-5）。退場は「縮小＋透明化」（出現方式によらず共通）
-    const qi=Math.max(0,Math.min(1,(t-spawnT)/popInDur)), qo=Math.max(0,Math.min(1,(deathT-t)/POP_OUT));
+    const popInDur=isPeta?0.035:POP_IN;
+    const popOutDur=isPeta?0.05:POP_OUT;
+    const qi=Math.max(0,Math.min(1,(t-spawnT)/popInDur)), qo=Math.max(0,Math.min(1,(deathT-t)/popOutDur));
     const pop=isPeta?1:(1+0.22*Math.sin(Math.min(1,qi)*Math.PI)*(1-qi*0.35)); // ペタッはバウンドしない
     const sc=qi*pop*(0.55+qo*0.45);
     if(sc<=0.01) continue;
