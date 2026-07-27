@@ -291,10 +291,10 @@
         </select>
       </label>
       <label style="flex:0 0 auto;">デコの大きさ
-        <input type="range" id="decoSize" min="0.5" max="3" step="0.1" value="1" style="width:110px; vertical-align:middle;">
+        <input type="range" id="decoSize" min="0.5" max="6" step="0.1" value="1" style="width:110px; vertical-align:middle;">
       </label>
       <label style="flex:0 0 auto;">デコの速さ
-        <input type="range" id="decoSpeed" min="0.3" max="3" step="0.1" value="1" style="width:110px; vertical-align:middle;">
+        <input type="range" id="decoSpeed" min="0.3" max="2.5" step="0.05" value="1" style="width:110px; vertical-align:middle;">
       </label>
       <span class="note" id="decoStatus"></span>
       <label>配置
@@ -566,8 +566,10 @@ function loadTiming(d){
   state.lines=d.lines.filter(l=>typeof l.time==="number")
     .map(l=>({text:String(l.text), time:l.time, motion:l.motion||"default", deco:l.deco, style:l.style, gap:!!l.gap, section:l.section, trans:l.trans,
       bg:l.bg, ch:l.ch, chPos:l.chPos, chSize:l.chSize, chMotion:l.chMotion, fx:l.fx, pop:!!l.pop,
-      chSizeNum:typeof l.chSizeNum==="number"?l.chSizeNum:undefined,
       chOffsetX:typeof l.chOffsetX==="number"?l.chOffsetX:undefined,
+      chOffsetY:typeof l.chOffsetY==="number"?l.chOffsetY:undefined,
+      chSizeAdj:typeof l.chSizeAdj==="number"?l.chSizeAdj:undefined,
+      chRotate:typeof l.chRotate==="number"?l.chRotate:undefined,
       charTimes:Array.isArray(l.charTimes)?l.charTimes:undefined}));
   state.title=d.title||state.title;
   if(Array.isArray(d.credits)) state.credits=d.credits;
@@ -639,8 +641,10 @@ function projectData(){
     sectionText:$("sectionText").value,
     lines:state.lines.map(l=>({text:l.text,time:l.time,motion:l.motion||"default",deco:l.deco||undefined,style:l.style||undefined,gap:!!l.gap||undefined,section:l.section||undefined,trans:l.trans||undefined,
       bg:l.bg||undefined,ch:l.ch||undefined,chPos:l.chPos||undefined,chSize:l.chSize||undefined,chMotion:l.chMotion||undefined,fx:l.fx||undefined,pop:l.pop||undefined,
-      chSizeNum:typeof l.chSizeNum==="number"?l.chSizeNum:undefined,
       chOffsetX:typeof l.chOffsetX==="number"?l.chOffsetX:undefined,
+      chOffsetY:typeof l.chOffsetY==="number"?l.chOffsetY:undefined,
+      chSizeAdj:typeof l.chSizeAdj==="number"?l.chSizeAdj:undefined,
+      chRotate:typeof l.chRotate==="number"?l.chRotate:undefined,
       charTimes:l.charTimes||undefined})),
     settings:gatherSettings()};
 }
@@ -1010,6 +1014,28 @@ function mkFieldNum(l,key,{min,max,step,placeholder}={}){
   inp.onclick=e=>e.stopPropagation();
   return inp;
 }
+/* ★25章：中央＝0・右/上/拡大がプラスの感覚的なスライダー。ドラッグ中は仮組みプレビューへ
+   リアルタイム反映する（従来のnumber入力はonchangeのみでリアルタイムに反映されなかった）。 */
+function mkFieldRange(l,key,{min,max,step,fmt}={}){
+  const wrap=document.createElement("span"); wrap.style.cssText="display:inline-flex; align-items:center; gap:4px;";
+  const inp=document.createElement("input");
+  inp.type="range"; inp.min=min; inp.max=max; inp.step=step||0.01;
+  inp.value=(typeof l[key]==="number")?l[key]:0;
+  inp.style.cssText="width:100px; vertical-align:middle;";
+  const out=document.createElement("span"); out.className="note"; out.style.cssText="min-width:38px; display:inline-block;";
+  const fmtFn=fmt||(v=>(+v).toFixed(2));
+  out.textContent=fmtFn(inp.value);
+  let started=false;
+  inp.addEventListener("pointerdown",()=>{ pushUndo(); started=true; });
+  inp.oninput=()=>{
+    if(!started){ pushUndo(); started=true; } // キーボード操作等でpointerdownを経ない場合の保険
+    l[key]=+inp.value; out.textContent=fmtFn(inp.value); drawFrame(effT());
+  };
+  inp.addEventListener("pointerup",()=>{ started=false; });
+  inp.onclick=e=>e.stopPropagation();
+  wrap.append(inp,out);
+  return wrap;
+}
 function renderRowPreview(cv2,z){ // メインcanvasに描いて縮小コピー（見出し行専用のサムネ）
   const tA=lineTime(state.lines[z.idx]);
   const zEnd=(z.z<state.lines.length)?lineTime(state.lines[z.z]):tA+6;
@@ -1071,10 +1097,10 @@ function renderLineList(){
           mkExHead("素材","c-pink"),
           mkExRow("背景",mkFieldSel(l,bgFieldOpts(),"bg",{fullRerender:true})),
           mkExRow("キャラ",mkFieldSel(l,chFieldOpts(),"ch",{fullRerender:true})),
-          mkExRow("位置",mkFieldSel(l,POS_OPTS,"chPos",{emptyValue:"right"})),
-          mkExRow("大きさ",mkFieldSel(l,SIZE_OPTS,"chSize",{emptyValue:"1"})),
-          mkExRow("大きさ調整",mkFieldNum(l,"chSizeNum",{min:0.3,max:2,step:0.05,placeholder:"0.3〜2"})),
-          mkExRow("位置調整",mkFieldNum(l,"chOffsetX",{min:-0.3,max:0.3,step:0.02,placeholder:"-0.3〜0.3"})),
+          mkExRow("位置（横）",mkFieldRange(l,"chOffsetX",{min:-0.6,max:0.6,step:0.01})),
+          mkExRow("位置（縦）",mkFieldRange(l,"chOffsetY",{min:-0.4,max:0.4,step:0.01})),
+          mkExRow("大きさ",mkFieldRange(l,"chSizeAdj",{min:-0.6,max:1.2,step:0.02})),
+          mkExRow("回転",mkFieldRange(l,"chRotate",{min:-45,max:45,step:1,fmt:v=>(+v).toFixed(0)+"°"})),
           mkExRow("動き",mkFieldSel(l,CMO_OPTS,"chMotion",{emptyValue:"sway"})),
           mkExRow("エフェクト",mkFieldSel(l,FX_OPTS,"fx"))
         );
@@ -1106,13 +1132,41 @@ function renderLineList(){
           r.append(lb,selEl,btn);
           return r;
         };
+        // ★25章：セクション（青帯）一括適用にも、位置(横/縦)・大きさ・回転のスライダーを追加
+        const mkApplyRowRange=(label,fieldKey,{min,max,step,fmt}={})=>{
+          const r=document.createElement("div"); r.className="exrow";
+          const lb=document.createElement("span"); lb.className="exlabel"; lb.textContent=label;
+          const inp=document.createElement("input");
+          inp.type="range"; inp.min=min; inp.max=max; inp.step=step||0.01;
+          inp.value=(typeof l[fieldKey]==="number")?l[fieldKey]:0;
+          inp.style.cssText="width:90px; vertical-align:middle;";
+          inp.onclick=e=>e.stopPropagation();
+          const out=document.createElement("span"); out.className="note"; out.style.cssText="min-width:36px; display:inline-block;";
+          const fmtFn=fmt||(v=>(+v).toFixed(2));
+          out.textContent=fmtFn(inp.value);
+          inp.oninput=()=>{ out.textContent=fmtFn(inp.value); l[fieldKey]=+inp.value; drawFrame(effT()); };
+          const btn=document.createElement("button"); btn.className="btn ghost"; btn.type="button";
+          btn.textContent="適用"; btn.style.cssText="font-size:.68rem; padding:2px 10px; margin-left:auto; flex-shrink:0;";
+          btn.onclick=async e=>{
+            e.stopPropagation();
+            const targetLines=state.lines.slice(z.idx,z.z);
+            const hasCustom=targetLines.some(tl=>tl!==l&&typeof tl[fieldKey]==="number");
+            if(hasCustom){
+              const ok=await modalConfirm("「"+label+"」はセクション内に個別編集された行があります。\n「適用」するとその行も上書きされます。よろしいですか？");
+              if(!ok) return;
+            }
+            pushUndo();
+            targetLines.forEach(tl=>{ tl[fieldKey]=+inp.value; });
+            renderLineList();
+          };
+          r.append(lb,inp,out,btn);
+          return r;
+        };
         const motionSel=mkPlainSel(Object.entries(MOTIONS),l.motion||"default");
         const decoSel=mkPlainSel(Object.entries(DECO_SEL),l.deco||"default");
         const styleSel=mkPlainSel(Object.entries(STYLE_SEL),l.style||"default");
         const bgSel=mkPlainSel(bgFieldOpts(),l.bg||"");
         const chSel=mkPlainSel(chFieldOpts(),l.ch||"");
-        const posSel=mkPlainSel(POS_OPTS,l.chPos||"right");
-        const sizeSel=mkPlainSel(SIZE_OPTS,l.chSize||"1");
         const cmoSel=mkPlainSel(CMO_OPTS,l.chMotion||"sway");
         const fxSel=mkPlainSel(FX_OPTS,l.fx||"");
         const col1=document.createElement("div"); col1.className="excol";
@@ -1120,8 +1174,12 @@ function renderLineList(){
           mkApplyRow("モーション",motionSel,"motion"),mkApplyRow("デコ",decoSel,"deco"),mkApplyRow("配置",styleSel,"style"));
         const col2=document.createElement("div"); col2.className="excol";
         col2.append(mkExHead("素材","c-pink"),
-          mkApplyRow("背景",bgSel,"bg"),mkApplyRow("キャラ",chSel,"ch"),mkApplyRow("位置",posSel,"chPos"),
-          mkApplyRow("大きさ",sizeSel,"chSize"),mkApplyRow("動き",cmoSel,"chMotion"),mkApplyRow("エフェクト",fxSel,"fx"));
+          mkApplyRow("背景",bgSel,"bg"),mkApplyRow("キャラ",chSel,"ch"),
+          mkApplyRowRange("位置（横）","chOffsetX",{min:-0.6,max:0.6,step:0.01}),
+          mkApplyRowRange("位置（縦）","chOffsetY",{min:-0.4,max:0.4,step:0.01}),
+          mkApplyRowRange("大きさ","chSizeAdj",{min:-0.6,max:1.2,step:0.02}),
+          mkApplyRowRange("回転","chRotate",{min:-45,max:45,step:1,fmt:v=>(+v).toFixed(0)+"°"}),
+          mkApplyRow("動き",cmoSel,"chMotion"),mkApplyRow("エフェクト",fxSel,"fx"));
         panel.append(col1,col2);
       }
       hd.appendChild(panel);
@@ -1154,10 +1212,10 @@ function renderLineList(){
       mkExHead("素材","c-pink"),
       mkExRow("背景",mkFieldSel(l,bgFieldOpts(),"bg",{fullRerender:true})),
       mkExRow("キャラ",mkFieldSel(l,chFieldOpts(),"ch",{fullRerender:true})),
-      mkExRow("位置",mkFieldSel(l,POS_OPTS,"chPos",{emptyValue:"right"})),
-      mkExRow("大きさ",mkFieldSel(l,SIZE_OPTS,"chSize",{emptyValue:"1"})),
-      mkExRow("大きさ調整",mkFieldNum(l,"chSizeNum",{min:0.3,max:2,step:0.05,placeholder:"0.3〜2"})),
-      mkExRow("位置調整",mkFieldNum(l,"chOffsetX",{min:-0.3,max:0.3,step:0.02,placeholder:"-0.3〜0.3"})),
+      mkExRow("位置（横）",mkFieldRange(l,"chOffsetX",{min:-0.6,max:0.6,step:0.01})),
+      mkExRow("位置（縦）",mkFieldRange(l,"chOffsetY",{min:-0.4,max:0.4,step:0.01})),
+      mkExRow("大きさ",mkFieldRange(l,"chSizeAdj",{min:-0.6,max:1.2,step:0.02})),
+      mkExRow("回転",mkFieldRange(l,"chRotate",{min:-45,max:45,step:1,fmt:v=>(+v).toFixed(0)+"°"})),
       mkExRow("動き",mkFieldSel(l,CMO_OPTS,"chMotion",{emptyValue:"sway"})),
       mkExRow("エフェクト",mkFieldSel(l,FX_OPTS,"fx"))
     );
@@ -2094,7 +2152,7 @@ function initDecoToggle(){
 }
 function updateDecoStatus(){
   const s=$("decoStatus"); if(!s) return;
-  s.textContent="大きさ ×"+(+state.decoSize).toFixed(1)+"／速さ ×"+(+state.decoSpeed).toFixed(1);
+  s.textContent="大きさ ×"+(+state.decoSize).toFixed(1)+"／速さ ×"+(+state.decoSpeed).toFixed(2);
 }
 document.addEventListener("DOMContentLoaded",initDecoToggle);
 function initStickerToggle(){
@@ -2309,6 +2367,10 @@ function resolveLineField(lineIdx,key){
   }
   return "";
 }
+// ★25章：旧・離散選択（左/中央/右・小/中/大）を廃止し、連続値（中央=0、右/上/拡大がプラス）に統一。
+//   過去の保存データに旧chPos/chSizeが残っていても、同等の連続値に変換して引き継ぐ（後方互換）。
+const LEGACY_POS_X={left:-0.32,center:0,right:0.32};
+const LEGACY_SIZE_ADJ={"0.7":-0.25,"1":0,"1.4":0.55}; // SIZE_H(0.60/0.85/1.30)を基準0.85からの差として変換
 function resolveCharAt(lineIdx){
   let chSetIdx=-1, chVal="";
   for(let i=Math.min(lineIdx,state.lines.length-1);i>=0;i--){
@@ -2316,17 +2378,22 @@ function resolveCharAt(lineIdx){
     if(l && l.ch!==undefined && l.ch!==""){ chSetIdx=i; chVal=l.ch; break; }
   }
   if(chSetIdx<0||chVal==="none") return null;
-  let pos="",size="",cmo="",sizeNum=null,offsetX=null;
+  let pos="",size="",cmo="",offsetX=null,offsetY=null,sizeAdj=null,rotate=null;
   for(let i=lineIdx;i>=chSetIdx;i--){
     const l=state.lines[i]; if(!l) continue;
     if(!pos&&l.chPos) pos=l.chPos;
     if(!size&&l.chSize) size=l.chSize;
     if(!cmo&&l.chMotion) cmo=l.chMotion;
-    // ★感覚的な大きさ・位置調整（連続値）。空欄＝上の行から引継、選択式のsize/posはそのまま土台として使う
-    if(sizeNum==null&&typeof l.chSizeNum==="number") sizeNum=l.chSizeNum;
     if(offsetX==null&&typeof l.chOffsetX==="number") offsetX=l.chOffsetX;
+    if(offsetY==null&&typeof l.chOffsetY==="number") offsetY=l.chOffsetY;
+    if(sizeAdj==null&&typeof l.chSizeAdj==="number") sizeAdj=l.chSizeAdj;
+    if(rotate==null&&typeof l.chRotate==="number") rotate=l.chRotate;
   }
-  return {name:chVal, pos:pos||"right", size:size||"1", cmo:cmo||"sway", chSetIdx, sizeNum, offsetX:offsetX||0};
+  // 連続値が未設定なら、旧・選択式の値（無ければ既定）から換算して引き継ぐ
+  if(offsetX==null) offsetX=LEGACY_POS_X[pos||"right"]??0.32;
+  if(sizeAdj==null) sizeAdj=LEGACY_SIZE_ADJ[size||"1"]??0;
+  return {name:chVal, cmo:cmo||"sway", chSetIdx,
+    offsetX, offsetY:offsetY||0, sizeAdj, rotate:rotate||0};
 }
 function pickBg(lineIdx){
   const name=resolveLineField(lineIdx,"bg");
@@ -2480,7 +2547,7 @@ function visibleChars(t,lineIdx){
   if(!r) return [];
   const ch=state.chars.find(c=>c.name===r.name); if(!ch) return [];
   const startTime=state.lines[r.chSetIdx]?lineTime(state.lines[r.chSetIdx]):t;
-  return [{ch,ci:0,startTime,ovr:{pos:r.pos,size:r.size,cmo:r.cmo,sizeNum:r.sizeNum,offsetX:r.offsetX}}];
+  return [{ch,ci:0,startTime,ovr:{cmo:r.cmo,offsetX:r.offsetX,offsetY:r.offsetY,sizeAdj:r.sizeAdj,rotate:r.rotate}}];
 }
 let charRects=[]; // このフレームでキャラが実際に占めた矩形（字幕よけ用）
 /* キャラの「配置計算」と「描画」を分離してある。
@@ -2496,16 +2563,12 @@ function layoutChars(t,lineIdx){
     const appear=1+0.4*(1-p)*Math.sin(p*Math.PI);
     const alpha=Math.min(1,p*2);
     const img=charImg(ch);
-    // ★「感覚的に大きくしたり位置をずらしたりできる」調整（連続値）。未設定なら従来の3段階のまま
-    const hRatio=ovr.sizeNum!=null?ovr.sizeNum:(SIZE_H[String(ovr.size)]??0.85);
+    // ★25章：離散選択（小中大・左中右）を廃止し、連続値へ統一。中央＝0、右/上/拡大がプラス
+    const hRatio=Math.max(0.15,0.85+(ovr.sizeAdj||0));
     const h=CH*hRatio, s=h/img.height, w=img.width*s;
-    const cpos=ovr.pos;
-    let x;
-    if(cpos==="left") x=CW*0.18-w/2;
-    else if(cpos==="center") x=CW*0.5-w/2;
-    else x=CW*0.82-w/2;
+    let x=CW*0.5-w/2; // 基準はつねに画面中央。左右の位置はoffsetXだけで決める
     x+=(ci%3-1)*CW*0.03;
-    x+=(ovr.offsetX||0)*CW; // ★左右の微調整（-0.3〜+0.3＝画面幅の-30%〜+30%）
+    x+=(ovr.offsetX||0)*CW; // ★左右の位置（中央=0・右がプラス・左がマイナス）
     // ★素材が画面から切れないように補正（幅が画面以上なら中央）
     if(w>=CW) x=(CW-w)/2;
     else x=Math.max(0,Math.min(CW-w,x));
@@ -2513,6 +2576,8 @@ function layoutChars(t,lineIdx){
     let y;
     if(h>CH*0.92) y=CH*SAFE_TOP;
     else y=CH*0.97-h;
+    y-=(ovr.offsetY||0)*CH; // ★上下の位置（中央=0・上がプラス・下がマイナス）
+    const rotRad=(ovr.rotate||0)*Math.PI/180;
     // ★動き：跳ねる（ビート着地）／ふわふわ／静止
     const cm=ovr.cmo;
     let yBob=0, squash=1;
@@ -2522,8 +2587,8 @@ function layoutChars(t,lineIdx){
     }else if(cm==="sway"){ // ゆったり大きめのふわふわ
       yBob=-Math.sin(t*0.9+ci*1.7)*CH*0.018;
     }
-    charRects.push({x,y,w,h,pos:cpos});
-    list.push({img,x,y,w,h,yBob,appear,squash,alpha});
+    charRects.push({x,y,w,h});
+    list.push({img,x,y,w,h,yBob,appear,squash,alpha,rotRad});
   }
   return list;
 }
@@ -2532,6 +2597,7 @@ function drawChars(list){
     ctx.save();
     ctx.globalAlpha=c.alpha;
     ctx.translate(c.x+c.w/2, c.y+c.h+c.yBob);
+    if(c.rotRad) ctx.rotate(c.rotRad); // ★25章：回転調整
     ctx.scale(c.appear/Math.sqrt(c.squash), c.appear*c.squash);
     ctx.drawImage(c.img,-c.w/2,-c.h,c.w,c.h);
     ctx.restore();
@@ -2662,8 +2728,9 @@ function arcLayout(text,t,lineIdx){
   const vis=visibleChars(t,lineIdx);
   let cx=CW*0.5, cy=CH*0.75;
   if(vis.length>0){
-    const pos=vis[0].ovr?vis[0].ovr.pos:"right";
-    cx=pos==="left"?CW*0.18:pos==="center"?CW*0.5:CW*0.82;
+    // ★25章：離散pos廃止に伴い、offsetXの符号からアーチの中心を推定する
+    const ox=vis[0].ovr?(vis[0].ovr.offsetX||0):0.32;
+    cx=CW*0.5+ox*CW;
     cy=CH*0.75;
   }
   const chars=[...text];
