@@ -529,8 +529,8 @@ function showTab(n){
     $("tab"+i).classList.toggle("active",i===n);
     $("pane"+i).classList.toggle("hidden",i!==n);
   }
-  if(n===1){ renderLineList(); }
-  if(n===2){ drawFrame(effT()); }
+  if(n===1){ renderLineList(); refreshPreview(); }
+  if(n===2){ refreshPreview(); }
 }
 
 /* ================= ① 素材読み込み ================= */
@@ -570,6 +570,7 @@ function loadTiming(d){
       chOffsetY:typeof l.chOffsetY==="number"?l.chOffsetY:undefined,
       chSizeAdj:typeof l.chSizeAdj==="number"?l.chSizeAdj:undefined,
       chRotate:typeof l.chRotate==="number"?l.chRotate:undefined,
+      locked:!!l.locked||undefined,
       charTimes:Array.isArray(l.charTimes)?l.charTimes:undefined}));
   state.title=d.title||state.title;
   if(Array.isArray(d.credits)) state.credits=d.credits;
@@ -645,6 +646,7 @@ function projectData(){
       chOffsetY:typeof l.chOffsetY==="number"?l.chOffsetY:undefined,
       chSizeAdj:typeof l.chSizeAdj==="number"?l.chSizeAdj:undefined,
       chRotate:typeof l.chRotate==="number"?l.chRotate:undefined,
+      locked:l.locked||undefined,
       charTimes:l.charTimes||undefined})),
     settings:gatherSettings()};
 }
@@ -777,7 +779,7 @@ async function registerFont(name,buf,persist){
     o.value=val; o.textContent="🔤 "+name.replace(/\.[^.]+$/,"");
     sel.appendChild(o);
   }
-  if(persist){ saveFontDB(name,buf); sel.value=val; drawFrame(effT()); }
+  if(persist){ saveFontDB(name,buf); sel.value=val; refreshPreview(); }
 }
 async function addFontFiles(files){
   for(const f of files){
@@ -795,11 +797,11 @@ async function addFontFiles(files){
     });
     for(const f of all) await registerFont(f.name,f.buf,false);
     reorderFontSelect(); updateFontFavBtn();
-    if(state.pendingFontSelect){ $("fontSelect").value=state.pendingFontSelect; drawFrame(effT()); }
+    if(state.pendingFontSelect){ $("fontSelect").value=state.pendingFontSelect; refreshPreview(); }
   }catch(e){ console.warn("font restore failed",e); }
 })();
 $("fontFile").addEventListener("change",e=>{ addFontFiles([...e.target.files]); e.target.value=""; });
-$("fontSelect").addEventListener("change",()=>drawFrame(effT()));
+$("fontSelect").addEventListener("change",()=>refreshPreview());
 $("fxAlways").addEventListener("change",()=>{ state.fx.always=$("fxAlways").value; });
 
 function loadImages(files,cb){
@@ -817,7 +819,7 @@ function addBgFiles(files,skipSave){
   loadImages(files,(f,img)=>{
     if(!skipSave) saveAsset("bg",f.name,f);
     state.bgs.push({name:f.name,img});
-    renderBgList(); rebindAssets(); renderLineList(); drawFrame(effT());
+    renderBgList(); rebindAssets(); renderLineList(); refreshPreview();
   });
 }
 $("charFile").addEventListener("change",e=>{
@@ -832,7 +834,7 @@ function addCharFiles(files,skipSave){
     const ch={name:f.name,imgRaw:img,imgKeyed:null,keyMode,keyStrength:1};
     if(keyMode!=="none") ch.imgKeyed=chromaKey(img,ch.keyStrength,keyMode);
     state.chars.push(ch);
-    renderCharList(); rebindAssets(); renderLineList(); drawFrame(effT());
+    renderCharList(); rebindAssets(); renderLineList(); refreshPreview();
   });
 }
 
@@ -961,7 +963,7 @@ function renderCharList(){
     km.onchange=()=>{
       ch.keyMode=km.value;
       ch.imgKeyed=(ch.keyMode==="none")?null:chromaKey(ch.imgRaw,ch.keyStrength,ch.keyMode);
-      renderCharList(); drawFrame(effT());
+      renderCharList(); refreshPreview();
     };
     const st=document.createElement("select");
     [["0.7","弱"],["1","標準"],["1.5","強"]].forEach(([v,lab])=>{
@@ -969,7 +971,7 @@ function renderCharList(){
     });
     st.value=String(ch.keyStrength);
     st.onchange=()=>{ ch.keyStrength=parseFloat(st.value);
-      if(ch.keyMode!=="none"){ ch.imgKeyed=chromaKey(ch.imgRaw,ch.keyStrength,ch.keyMode); renderCharList(); drawFrame(effT()); } };
+      if(ch.keyMode!=="none"){ ch.imgKeyed=chromaKey(ch.imgRaw,ch.keyStrength,ch.keyMode); renderCharList(); refreshPreview(); } };
     const del=document.createElement("button"); del.className="del"; del.textContent="削除";
     del.onclick=()=>{ deleteAsset("char",ch.name); state.chars.splice(i,1); renderCharList(); renderLineList(); };
     c.append(im,nm,km,st,del); box.appendChild(c);
@@ -991,9 +993,10 @@ function mkFieldSel(l,opts,key,{fullRerender=false,emptyValue=""}={}){
   for(const [v,lab] of opts){ const o=document.createElement("option"); o.value=v; o.textContent=lab; sel.appendChild(o); }
   sel.value=(l[key]!==undefined&&l[key]!==null&&l[key]!=="")?l[key]:emptyValue;
   sel.onchange=()=>{
-    pushUndo(); l[key]=sel.value;
+    pushUndo(); l[key]=sel.value; l.locked=true; // ★27章：個別編集で自動ロック
     if(key==="motion"&&typeof updateEasePanelVisibility==="function") updateEasePanelVisibility();
     if(fullRerender) renderLineList();
+    refreshPreview();
   };
   sel.onclick=e=>e.stopPropagation();
   return sel;
@@ -1009,7 +1012,7 @@ function mkFieldNum(l,key,{min,max,step,placeholder}={}){
   inp.onchange=()=>{
     pushUndo();
     if(inp.value==="") delete l[key]; else l[key]=+inp.value;
-    drawFrame(effT());
+    refreshPreview();
   };
   inp.onclick=e=>e.stopPropagation();
   return inp;
@@ -1021,7 +1024,7 @@ function mkFieldRange(l,key,{min,max,step,fmt}={}){
   const inp=document.createElement("input");
   inp.type="range"; inp.min=min; inp.max=max; inp.step=step||0.01;
   inp.value=(typeof l[key]==="number")?l[key]:0;
-  inp.style.cssText="width:100px; vertical-align:middle;";
+  inp.style.cssText="width:160px; vertical-align:middle;"; // ★もう少し横長に（操作しやすさのため）
   const out=document.createElement("span"); out.className="note"; out.style.cssText="min-width:38px; display:inline-block;";
   const fmtFn=fmt||(v=>(+v).toFixed(2));
   out.textContent=fmtFn(inp.value);
@@ -1029,7 +1032,7 @@ function mkFieldRange(l,key,{min,max,step,fmt}={}){
   inp.addEventListener("pointerdown",()=>{ pushUndo(); started=true; });
   inp.oninput=()=>{
     if(!started){ pushUndo(); started=true; } // キーボード操作等でpointerdownを経ない場合の保険
-    l[key]=+inp.value; out.textContent=fmtFn(inp.value); drawFrame(effT());
+    l[key]=+inp.value; l.locked=true; out.textContent=fmtFn(inp.value); refreshPreview(); // ★27章：自動ロック
   };
   inp.addEventListener("pointerup",()=>{ started=false; });
   inp.onclick=e=>e.stopPropagation();
@@ -1049,6 +1052,7 @@ function renderLineList(){
   invalidateEnergyCache(); // 行やセクションが変わったら熱量キャッシュを捨てる（デコの量が追従する）
   invalidateCategoryCache(); // 歌詞が変わったらカテゴリ判定もやり直す（17-6）
   invalidateStickerLayoutCache(); // 行数やセクションが変わったらステッカーの基本配置も作り直す（23章）
+  if(typeof invalidatePlacementCache==="function") invalidatePlacementCache(); // 歌詞配置も同様に作り直す（26章）
   const box=$("lineList"); box.innerHTML="";
   const zones=secZones(); let zi=0;
   let prevSec=null;
@@ -1071,8 +1075,12 @@ function renderLineList(){
         renderRowPreview(pv2,z);
       }
       const nm=document.createElement("span");
-      nm.textContent=l.gap?"["+l.text.replace(/[（）()]/g,"")+"]":"［"+l.section+"］";
+      nm.textContent=(l.locked?"🔒":"")+(l.gap?"["+l.text.replace(/[（）()]/g,"")+"]":"［"+l.section+"］");
       nm.style.cssText="min-width:100px;";
+      if(l.locked){
+        nm.title="個別に調整済み（セクション一括適用の対象外）。クリックで解除"; nm.style.cursor="pointer";
+        nm.onclick=e=>{ e.preventDefault(); e.stopPropagation(); pushUndo(); delete l.locked; renderLineList(); };
+      }
       sum.appendChild(nm);
       const zt=document.createElement("span"); zt.className="t"; zt.textContent=fmt(lineTime(l));
       zt.title="クリックで仮合成プレビューへ";
@@ -1097,7 +1105,7 @@ function renderLineList(){
           mkExHead("素材","c-pink"),
           mkExRow("背景",mkFieldSel(l,bgFieldOpts(),"bg",{fullRerender:true})),
           mkExRow("キャラ",mkFieldSel(l,chFieldOpts(),"ch",{fullRerender:true})),
-          mkExRow("位置（横）",mkFieldRange(l,"chOffsetX",{min:-0.6,max:0.6,step:0.01})),
+          mkExRow("位置（横）",mkFieldRange(l,"chOffsetX",{min:-0.8,max:0.8,step:0.01})),
           mkExRow("位置（縦）",mkFieldRange(l,"chOffsetY",{min:-0.4,max:0.4,step:0.01})),
           mkExRow("大きさ",mkFieldRange(l,"chSizeAdj",{min:-0.6,max:1.2,step:0.02})),
           mkExRow("回転",mkFieldRange(l,"chRotate",{min:-45,max:45,step:1,fmt:v=>(+v).toFixed(0)+"°"})),
@@ -1111,7 +1119,18 @@ function renderLineList(){
         const note=document.createElement("p"); note.className="note"; note.style.cssText="grid-column:1/-1; margin:0 0 6px;";
         note.textContent="この["+l.section+"]セクション（"+z.a+"〜"+z.z+"行目・全"+(z.z-z.a+1)+"行）に、項目ごとに「適用」を押した分だけ反映します。";
         panel.appendChild(note);
+        // ★27章：自動ロック。個別に手で編集した行には🔒が付き、一括適用は既定でスキップする
+        const lockChk=document.createElement("label"); lockChk.style.cssText="grid-column:1/-1; margin:0 0 8px; font-size:.78rem;";
+        const lockCb=document.createElement("input"); lockCb.type="checkbox"; lockCb.style.cssText="width:auto; vertical-align:middle;";
+        lockCb.onclick=e=>e.stopPropagation();
+        lockChk.append(lockCb," 🔒も含めて上書きする（個別に調整済みの行も一緒に上書きします）");
+        panel.appendChild(lockChk);
         const fieldIsCustom=(val,key)=>["motion","deco","style"].includes(key)?(!!val&&val!=="default"):!!val;
+        const flashApplied=(btn,n,skipped)=>{
+          const orig=btn.textContent;
+          btn.textContent="✅ "+n+"行"+(skipped?"（🔒"+skipped+"行スキップ）":"");
+          setTimeout(()=>{ btn.textContent=orig; },1800);
+        };
         const mkApplyRow=(label,selEl,fieldKey)=>{
           const r=document.createElement("div"); r.className="exrow";
           const lb=document.createElement("span"); lb.className="exlabel"; lb.textContent=label;
@@ -1119,7 +1138,9 @@ function renderLineList(){
           btn.textContent="適用"; btn.style.cssText="font-size:.68rem; padding:2px 10px; margin-left:auto; flex-shrink:0;";
           btn.onclick=async e=>{
             e.stopPropagation();
-            const targetLines=state.lines.slice(z.idx,z.z);
+            const all=state.lines.slice(z.idx,z.z);
+            const targetLines=lockCb.checked?all:all.filter(tl=>!tl.locked);
+            const skipped=all.length-targetLines.length;
             const hasCustom=targetLines.some(tl=>tl!==l&&fieldIsCustom(tl[fieldKey],fieldKey));
             if(hasCustom){
               const ok=await modalConfirm("「"+label+"」はセクション内に個別編集された行があります。\n「適用」するとその行も上書きされます。よろしいですか？");
@@ -1127,7 +1148,8 @@ function renderLineList(){
             }
             pushUndo();
             targetLines.forEach(tl=>{ tl[fieldKey]=selEl.value; });
-            renderLineList();
+            flashApplied(btn,targetLines.length,skipped);
+            renderLineList(); refreshPreview();
           };
           r.append(lb,selEl,btn);
           return r;
@@ -1139,17 +1161,19 @@ function renderLineList(){
           const inp=document.createElement("input");
           inp.type="range"; inp.min=min; inp.max=max; inp.step=step||0.01;
           inp.value=(typeof l[fieldKey]==="number")?l[fieldKey]:0;
-          inp.style.cssText="width:90px; vertical-align:middle;";
+          inp.style.cssText="width:140px; vertical-align:middle;";
           inp.onclick=e=>e.stopPropagation();
           const out=document.createElement("span"); out.className="note"; out.style.cssText="min-width:36px; display:inline-block;";
           const fmtFn=fmt||(v=>(+v).toFixed(2));
           out.textContent=fmtFn(inp.value);
-          inp.oninput=()=>{ out.textContent=fmtFn(inp.value); l[fieldKey]=+inp.value; drawFrame(effT()); };
+          inp.oninput=()=>{ out.textContent=fmtFn(inp.value); l[fieldKey]=+inp.value; refreshPreview(); };
           const btn=document.createElement("button"); btn.className="btn ghost"; btn.type="button";
           btn.textContent="適用"; btn.style.cssText="font-size:.68rem; padding:2px 10px; margin-left:auto; flex-shrink:0;";
           btn.onclick=async e=>{
             e.stopPropagation();
-            const targetLines=state.lines.slice(z.idx,z.z);
+            const all=state.lines.slice(z.idx,z.z);
+            const targetLines=lockCb.checked?all:all.filter(tl=>!tl.locked);
+            const skipped=all.length-targetLines.length;
             const hasCustom=targetLines.some(tl=>tl!==l&&typeof tl[fieldKey]==="number");
             if(hasCustom){
               const ok=await modalConfirm("「"+label+"」はセクション内に個別編集された行があります。\n「適用」するとその行も上書きされます。よろしいですか？");
@@ -1157,7 +1181,8 @@ function renderLineList(){
             }
             pushUndo();
             targetLines.forEach(tl=>{ tl[fieldKey]=+inp.value; });
-            renderLineList();
+            flashApplied(btn,targetLines.length,skipped);
+            renderLineList(); refreshPreview();
           };
           r.append(lb,inp,out,btn);
           return r;
@@ -1175,7 +1200,7 @@ function renderLineList(){
         const col2=document.createElement("div"); col2.className="excol";
         col2.append(mkExHead("素材","c-pink"),
           mkApplyRow("背景",bgSel,"bg"),mkApplyRow("キャラ",chSel,"ch"),
-          mkApplyRowRange("位置（横）","chOffsetX",{min:-0.6,max:0.6,step:0.01}),
+          mkApplyRowRange("位置（横）","chOffsetX",{min:-0.8,max:0.8,step:0.01}),
           mkApplyRowRange("位置（縦）","chOffsetY",{min:-0.4,max:0.4,step:0.01}),
           mkApplyRowRange("大きさ","chSizeAdj",{min:-0.6,max:1.2,step:0.02}),
           mkApplyRowRange("回転","chRotate",{min:-45,max:45,step:1,fmt:v=>(+v).toFixed(0)+"°"}),
@@ -1191,7 +1216,9 @@ function renderLineList(){
     // 通常の歌詞行：折りたたみ式（普段は歌詞だけ・クリックで文字演出／素材の編集欄を展開）
     const row=document.createElement("details"); row.className="lrow-acc"+(i%2?" odd":"");
     const sum=document.createElement("summary"); sum.className="lrow";
-    const no=document.createElement("span"); no.className="no"; no.textContent=(i+1);
+    const no=document.createElement("span"); no.className="no"; no.textContent=(l.locked?"🔒":"")+(i+1);
+    no.title=l.locked?"個別に調整済み（セクション一括適用の対象外）。クリックで解除":"";
+    if(l.locked){ no.style.cursor="pointer"; no.onclick=e=>{ e.preventDefault(); e.stopPropagation(); pushUndo(); delete l.locked; renderLineList(); }; }
     const t=document.createElement("span"); t.className="t"; t.textContent=fmt(l.time);
     const txt=document.createElement("span"); txt.className="txt"; txt.textContent=l.text;
     sum.append(no,t,txt);
@@ -1212,7 +1239,7 @@ function renderLineList(){
       mkExHead("素材","c-pink"),
       mkExRow("背景",mkFieldSel(l,bgFieldOpts(),"bg",{fullRerender:true})),
       mkExRow("キャラ",mkFieldSel(l,chFieldOpts(),"ch",{fullRerender:true})),
-      mkExRow("位置（横）",mkFieldRange(l,"chOffsetX",{min:-0.6,max:0.6,step:0.01})),
+      mkExRow("位置（横）",mkFieldRange(l,"chOffsetX",{min:-0.8,max:0.8,step:0.01})),
       mkExRow("位置（縦）",mkFieldRange(l,"chOffsetY",{min:-0.4,max:0.4,step:0.01})),
       mkExRow("大きさ",mkFieldRange(l,"chSizeAdj",{min:-0.6,max:1.2,step:0.02})),
       mkExRow("回転",mkFieldRange(l,"chRotate",{min:-45,max:45,step:1,fmt:v=>(+v).toFixed(0)+"°"})),
@@ -1247,7 +1274,7 @@ function initEasePanel(){
   renderEaseParams(); drawEaseGraph();
   sel.onchange=()=>{ state.easeDefault.family=sel.value; renderEaseParams(); drawEaseGraph(); };
   $("easeDir").onchange=()=>{ state.easeDefault.dir=$("easeDir").value; drawEaseGraph(); };
-  $("easeApplyChk").onchange=()=>{ state.easeApply=$("easeApplyChk").checked; drawFrame(effT()); };
+  $("easeApplyChk").onchange=()=>{ state.easeApply=$("easeApplyChk").checked; refreshPreview(); };
   updateEasePanelVisibility();
 }
 let easePanelPinned=false;
@@ -1943,7 +1970,7 @@ setInterval(()=>{ if(tap.active) $("tapTime").textContent=fmt(audio.currentTime)
 let seekDragging=false;
 $("seekBar").addEventListener("input",()=>{
   seekDragging=true;
-  if(audio.src){ audio.currentTime=+$("seekBar").value; resetDeco(); drawFrame(effT()); }
+  if(audio.src){ audio.currentTime=+$("seekBar").value; resetDeco(); refreshPreview(); }
 });
 $("seekBar").addEventListener("change",()=>{ seekDragging=false; });
 
@@ -2055,7 +2082,7 @@ function restoreEditable(json){
   });
   applySettings(d.settings);
   renderLineList(); renderCharList();
-  drawFrame(effT());
+  refreshPreview();
   _undoSuppress=false;
 }
 function undo(){ if(undoStack.length===0) return; redoStack.push(snapshotEditable()); restoreEditable(undoStack.pop()); }
@@ -2121,7 +2148,7 @@ state.fxBlend=false; // ✨エフェクトを加算合成(lighter)で光らせ�
 function initFxBlendToggle(){
   const chk=$("fxBlendChk"); if(!chk) return;
   chk.checked=!!state.fxBlend;
-  chk.onchange=()=>{ state.fxBlend=chk.checked; updateFxBlendStatus(); drawFrame(effT()); };
+  chk.onchange=()=>{ state.fxBlend=chk.checked; updateFxBlendStatus(); refreshPreview(); };
   updateFxBlendStatus();
 }
 function updateFxBlendStatus(){
@@ -2145,9 +2172,9 @@ state.decoSize=1.0;  // 大きさの倍率（0.5〜3）。19-2の数値を土台
 state.decoSpeed=1.0; // 速さの倍率（0.3〜3）。寿命に反比例＝大きいほど出現・消失が速くなる
 function initDecoToggle(){
   const dz=$("decoSize");
-  if(dz){ dz.value=state.decoSize; dz.oninput=()=>{ state.decoSize=+dz.value; updateDecoStatus(); }; }
+  if(dz){ dz.value=state.decoSize; dz.oninput=()=>{ state.decoSize=+dz.value; updateDecoStatus(); refreshPreview(); }; }
   const ds=$("decoSpeed");
-  if(ds){ ds.value=state.decoSpeed; ds.oninput=()=>{ state.decoSpeed=+ds.value; updateDecoStatus(); }; }
+  if(ds){ ds.value=state.decoSpeed; ds.oninput=()=>{ state.decoSpeed=+ds.value; updateDecoStatus(); refreshPreview(); }; }
   updateDecoStatus();
 }
 function updateDecoStatus(){
@@ -2159,27 +2186,27 @@ function initStickerToggle(){
   const chk=$("stickerChk");
   if(chk){
     chk.checked=!!state.stickerOn;
-    chk.onchange=()=>{ state.stickerOn=chk.checked; updateStickerStatus(); drawFrame(effT()); };
+    chk.onchange=()=>{ state.stickerOn=chk.checked; updateStickerStatus(); refreshPreview(); };
   }
   const sl=$("stickerAmt");
   if(sl){
     sl.value=state.stickerAmt;
-    sl.oninput=()=>{ state.stickerAmt=+sl.value; updateStickerStatus(); drawFrame(effT()); };
+    sl.oninput=()=>{ state.stickerAmt=+sl.value; updateStickerStatus(); refreshPreview(); };
   }
   const sz=$("stickerSize");
   if(sz){
     sz.value=state.stickerSize;
-    sz.oninput=()=>{ state.stickerSize=+sz.value; updateStickerStatus(); drawFrame(effT()); };
+    sz.oninput=()=>{ state.stickerSize=+sz.value; updateStickerStatus(); refreshPreview(); };
   }
   const sb=$("stickerBoil");
   if(sb){
     sb.value=state.stickerBoil;
-    sb.oninput=()=>{ state.stickerBoil=+sb.value; updateStickerStatus(); drawFrame(effT()); };
+    sb.oninput=()=>{ state.stickerBoil=+sb.value; updateStickerStatus(); refreshPreview(); };
   }
   const uc=$("stickerUnifyChk");
   if(uc){
     uc.checked=!!state.stickerUnifyBoil;
-    uc.onchange=()=>{ state.stickerUnifyBoil=uc.checked; updateStickerStatus(); drawFrame(effT()); };
+    uc.onchange=()=>{ state.stickerUnifyBoil=uc.checked; updateStickerStatus(); refreshPreview(); };
   }
   updateStickerStatus();
 }
@@ -2199,13 +2226,13 @@ function initTextStylePanel(){
   $("tsStrokeWidth").value=ts.strokeWidth; $("tsStrokeWidthOut").textContent=ts.strokeWidth;
   $("tsGlow").checked=ts.glow; $("tsGlowColor").value=ts.glowColor;
   $("tsGlowBlur").value=ts.glowBlur; $("tsGlowBlurOut").textContent=ts.glowBlur;
-  $("tsColor").onchange=()=>{ ts.color=$("tsColor").value; drawFrame(effT()); };
-  $("tsColorOverlay").onchange=()=>{ ts.colorOverlay=$("tsColorOverlay").value; drawFrame(effT()); };
-  $("tsStroke").onchange=()=>{ ts.stroke=$("tsStroke").value; drawFrame(effT()); };
-  $("tsStrokeWidth").oninput=()=>{ ts.strokeWidth=parseFloat($("tsStrokeWidth").value); $("tsStrokeWidthOut").textContent=ts.strokeWidth; drawFrame(effT()); };
-  $("tsGlow").onchange=()=>{ ts.glow=$("tsGlow").checked; drawFrame(effT()); };
-  $("tsGlowColor").onchange=()=>{ ts.glowColor=$("tsGlowColor").value; drawFrame(effT()); };
-  $("tsGlowBlur").oninput=()=>{ ts.glowBlur=parseFloat($("tsGlowBlur").value); $("tsGlowBlurOut").textContent=ts.glowBlur; drawFrame(effT()); };
+  $("tsColor").onchange=()=>{ ts.color=$("tsColor").value; refreshPreview(); };
+  $("tsColorOverlay").onchange=()=>{ ts.colorOverlay=$("tsColorOverlay").value; refreshPreview(); };
+  $("tsStroke").onchange=()=>{ ts.stroke=$("tsStroke").value; refreshPreview(); };
+  $("tsStrokeWidth").oninput=()=>{ ts.strokeWidth=parseFloat($("tsStrokeWidth").value); $("tsStrokeWidthOut").textContent=ts.strokeWidth; refreshPreview(); };
+  $("tsGlow").onchange=()=>{ ts.glow=$("tsGlow").checked; refreshPreview(); };
+  $("tsGlowColor").onchange=()=>{ ts.glowColor=$("tsGlowColor").value; refreshPreview(); };
+  $("tsGlowBlur").oninput=()=>{ ts.glowBlur=parseFloat($("tsGlowBlur").value); $("tsGlowBlurOut").textContent=ts.glowBlur; refreshPreview(); };
 }
 let textStylePanelPinned=false;
 function toggleTextStylePanel(){
@@ -2246,7 +2273,7 @@ function applyTheme(key){
   Object.assign(state.textStyle,th.textStyle);
   if($("themeSelect")) $("themeSelect").value=key;
   if($("tsColor")) initTextStylePanel();
-  drawFrame(effT());
+  refreshPreview();
 }
 document.addEventListener("DOMContentLoaded",initThemeSelect);
 if(document.readyState!=="loading") initThemeSelect();
@@ -2569,14 +2596,18 @@ function layoutChars(t,lineIdx){
     let x=CW*0.5-w/2; // 基準はつねに画面中央。左右の位置はoffsetXだけで決める
     x+=(ci%3-1)*CW*0.03;
     x+=(ovr.offsetX||0)*CW; // ★左右の位置（中央=0・右がプラス・左がマイナス）
-    // ★素材が画面から切れないように補正（幅が画面以上なら中央）
+    // ★「素材が画面外に出てもいいので、左右にもっと大きく動けるように」との要望に対応。
+    //   全部を画面内に収める制限をやめ、「幅の20%だけは必ず画面内に残る」という緩い制限にした
+    //   （完全に見失って行方不明にならないための最低限の歯止め）。
+    const VIS=0.2;
     if(w>=CW) x=(CW-w)/2;
-    else x=Math.max(0,Math.min(CW-w,x));
+    else x=Math.max(-w*(1-VIS),Math.min(CW-w*VIS,x));
     // 大サイズは頭を安全圏の天井に合わせ、下ははみ出しOK
     let y;
     if(h>CH*0.92) y=CH*SAFE_TOP;
     else y=CH*0.97-h;
     y-=(ovr.offsetY||0)*CH; // ★上下の位置（中央=0・上がプラス・下がマイナス）
+    y=Math.max(-h*(1-VIS),Math.min(CH-h*VIS,y)); // ★横と同じ「高さの20%は画面内に残す」制限
     const rotRad=(ovr.rotate||0)*Math.PI/180;
     // ★動き：跳ねる（ビート着地）／ふわふわ／静止
     const cm=ovr.cmo;
@@ -2684,6 +2715,208 @@ function layoutLine(text,zone){ // zone:{cx, maxW, y, baseFs}
   }
   return {positions,fs};
 }
+/* ================= 26章：歌詞配置エンジン（GPT分析の実装） =================
+   従来のpickZone「auto」は、キャラの実占有範囲から空きを探すだけの自己流ルールだった。
+   GPTの実測統計（配置の分布・被写体との関係・文字数・セクション・行の移動パターン）を
+   そのまま数値として使い、決定論的な重み付き抽選で配置を決める。
+   bottom/overlay/arcは従来通り手動指定として残す。 */
+
+// ---- 配置スロット（11種）。座標は画面比率 ----
+const PLACEMENT_SLOTS={
+  center:      {cx:0.50,cy:0.50,maxW:0.72,group:"CENTER"},
+  bottomCenter:{cx:0.50,cy:0.76,maxW:0.86,group:"BOTTOM"},
+  topCenter:   {cx:0.50,cy:0.20,maxW:0.86,group:"TOP"},
+  left:        {cx:0.26,cy:0.50,maxW:0.44,group:"SIDE"},
+  right:       {cx:0.74,cy:0.50,maxW:0.44,group:"SIDE"},
+  topLeft:     {cx:0.28,cy:0.22,maxW:0.46,group:"CORNER"},
+  topRight:    {cx:0.72,cy:0.22,maxW:0.46,group:"CORNER"},
+  bottomLeft:  {cx:0.28,cy:0.74,maxW:0.46,group:"CORNER"},
+  bottomRight: {cx:0.72,cy:0.74,maxW:0.46,group:"CORNER"},
+  diagonal:    {cx:0.50,cy:0.50,maxW:0.70,group:"SPECIAL"},
+  fullWidth:   {cx:0.50,cy:0.50,maxW:0.94,group:"SPECIAL",fontMul:1.08},
+};
+// ---- シーン別の基本重み（26-4） ----
+const SCENE_WEIGHTS={
+  A:{center:27,bottomCenter:18,left:15,right:15,topCenter:8,topLeft:1.5,topRight:1.5,bottomLeft:1.25,bottomRight:1.25,diagonal:3,fullWidth:3},
+  B:{center:34,bottomCenter:21,left:10,right:10,topCenter:10,topLeft:1,topRight:1,bottomLeft:1,bottomRight:1,diagonal:4,fullWidth:3},
+  C:{center:49,bottomCenter:14,left:8,right:8,topCenter:9,topLeft:0,topRight:0,bottomLeft:0,bottomRight:0,diagonal:5,fullWidth:7},
+};
+// ---- 文字数バケット→グループ倍率（26-7） ----
+const LEN_MUL={
+  short:{CENTER:0.8,BOTTOM:0.4,TOP:1.2,SIDE:1.6,CORNER:2.0,SPECIAL:1.2},
+  mid:  {CENTER:1.0,BOTTOM:0.7,TOP:1.0,SIDE:1.5,CORNER:1.0,SPECIAL:0.8},
+  long: {CENTER:1.0,BOTTOM:2.2,TOP:0.3,SIDE:0.8,CORNER:0.3,SPECIAL:0.4},
+  vlong:{CENTER:1.0,BOTTOM:3.0,TOP:0.1,SIDE:0.3,CORNER:0.1,SPECIAL:0.5},
+};
+function lenBucketOf(n){ return n<=5?"short":n<=10?"mid":n<=16?"long":"vlong"; }
+// ---- セクション役割（26-8）。ROLE_ENERGYと同じ順序ルール（部分一致の衝突対策） ----
+const ROLE_PLACEMENT=[
+  [/last.?chorus|ラス.?サビ/i,     {changeProb:0.42,centerMul:1.3,fullMul:3.0,fontMul:1.15}],
+  [/pre.?chorus.?2|プレ.?サビ.?2/i,{changeProb:0.44,centerMul:1.0,fullMul:0.9,fontMul:1.02}],
+  [/chorus.?2|サビ.?2/i,           {changeProb:0.44,centerMul:1.5,fullMul:2.0,fontMul:1.12}],
+  [/pre.?chorus|ビート前|プレ.?サビ/i,{changeProb:0.44,centerMul:1.0,fullMul:0.9,fontMul:1.02}],
+  [/bridge|落ち/i,                 {changeProb:0.15,centerMul:2.0,fullMul:0.5,fontMul:0.98}],
+  [/chorus|サビ/i,                 {changeProb:0.44,centerMul:1.5,fullMul:2.0,fontMul:1.12}],
+  [/verse.?2|aメロ.?2/i,           {changeProb:0.44,centerMul:1.0,fullMul:0.9,fontMul:1.02}],
+  [/verse|aメロ/i,                 {changeProb:0.27,centerMul:1.0,fullMul:0.8,fontMul:1.00}],
+  [/instrumental/i,                {changeProb:0.20,centerMul:1.0,fullMul:1.0,fontMul:1.00}],
+  [/outro/i,                       {changeProb:0.20,centerMul:1.0,fullMul:1.0,fontMul:1.00}],
+  [/intro/i,                       {changeProb:0.20,centerMul:1.0,fullMul:1.0,fontMul:1.00}],
+];
+const ROLE_PLACEMENT_DEFAULT={changeProb:0.27,centerMul:1.0,fullMul:0.8,fontMul:1.00};
+function roleOfSectionNameForPlacement(name){
+  const s=String(name||"");
+  for(const [re,r] of ROLE_PLACEMENT) if(re.test(s)) return r;
+  return ROLE_PLACEMENT_DEFAULT;
+}
+// ---- 行の移動パターン（26-9） ----
+const MOVE_PATTERNS=[
+  {name:"leftright",w:31,seq:["left","right"]},
+  {name:"updown",   w:23,seq:["topCenter","bottomCenter"]},
+  {name:"diagonal", w:19,seq:["topLeft","bottomRight","topRight","bottomLeft"]},
+  {name:"random",   w:19,seq:null},
+  {name:"circle",   w:8, seq:["topCenter","right","bottomCenter","left"]},
+];
+function pickMovePattern(seed){
+  const total=MOVE_PATTERNS.reduce((a,p)=>a+p.w,0);
+  let r=hash01(seed*9.1)*total;
+  for(const p of MOVE_PATTERNS){ if(r<p.w) return p; r-=p.w; }
+  return MOVE_PATTERNS[0];
+}
+function weightedPickSlot(weights,seed){
+  const entries=Object.entries(weights).filter(([,w])=>w>0);
+  const total=entries.reduce((a,[,w])=>a+w,0);
+  if(total<=0) return "center";
+  let r=hash01(seed)*total;
+  for(const [name,w] of entries){ if(r<w) return name; r-=w; }
+  return entries[entries.length-1][0];
+}
+function weightedKey(table,r01){
+  const total=Object.values(table).reduce((a,b)=>a+b,0);
+  let r=r01*total;
+  for(const k in table){ if(r<table[k]) return k; r-=table[k]; }
+  return Object.keys(table)[0];
+}
+function boostSlots(weights,names,mul){ for(const n of names) if(weights[n]!=null) weights[n]*=mul; }
+
+// ---- シーン判定（26-2）：resolveCharAt/pickBgという「静的に決まる」情報だけで判定する。
+//   drawFrameのcharRects（今この瞬間の描画）に依存すると、キャッシュを跨いで矛盾するため使わない。
+function sceneOfLine(lineIdx){
+  if(resolveCharAt(lineIdx)) return "A";
+  return pickBg(lineIdx)?"B":"C";
+}
+// ---- 人物の左右位置（26-5）。実描画ではなくresolveCharAtのoffsetXから推定する ----
+function personSideForLine(lineIdx){
+  const r=resolveCharAt(lineIdx);
+  if(!r) return null;
+  const cxRatio=0.5+(r.offsetX||0);
+  if(cxRatio<0.40) return "left";
+  if(cxRatio>0.60) return "right";
+  return "center";
+}
+function applyPersonAvoidance(weights,lineIdx){
+  const side=personSideForLine(lineIdx);
+  if(!side) return;
+  const leftSlots=["left","topLeft","bottomLeft"], rightSlots=["right","topRight","bottomRight"];
+  const centerish=["center","bottomCenter"];
+  const seed=lineIdx*211+7;
+  if(side==="center"){
+    const pick=weightedKey({left:36,right:36,overlap:28},hash01(seed*3.1));
+    if(pick==="left"){ boostSlots(weights,leftSlots,3); boostSlots(weights,rightSlots,0.15); }
+    else if(pick==="right"){ boostSlots(weights,rightSlots,3); boostSlots(weights,leftSlots,0.15); }
+    else boostSlots(weights,centerish,3);
+  }else if(side==="left"){
+    const pick=weightedKey({opposite:71,center:17,overlap:12},hash01(seed*3.1));
+    if(pick==="opposite"){ boostSlots(weights,rightSlots,3); boostSlots(weights,leftSlots,0.15); }
+    else if(pick==="center") boostSlots(weights,centerish,2);
+    else boostSlots(weights,leftSlots,2); // 人物に重ねる
+  }else{
+    const pick=weightedKey({opposite:72,center:18,overlap:10},hash01(seed*3.1));
+    if(pick==="opposite"){ boostSlots(weights,leftSlots,3); boostSlots(weights,rightSlots,0.15); }
+    else if(pick==="center") boostSlots(weights,centerish,2);
+    else boostSlots(weights,rightSlots,2);
+  }
+}
+// ---- 背景の情報量（26-6/26-10）。背景1枚につき1回だけ計算してキャッシュする ----
+function bgBusyness(bg){
+  if(!bg||!bg.img) return 0.5;
+  if(bg.busyness!=null) return bg.busyness;
+  try{
+    const c=document.createElement("canvas"); c.width=64; c.height=36;
+    const x=c.getContext("2d"); x.drawImage(bg.img,0,0,64,36);
+    const d=x.getImageData(0,0,64,36).data;
+    let diffSum=0,cnt=0;
+    for(let y=0;y<36;y++)for(let xx=0;xx<63;xx++){
+      const i=(y*64+xx)*4, j=i+4;
+      const lum1=d[i]*0.3+d[i+1]*0.59+d[i+2]*0.11, lum2=d[j]*0.3+d[j+1]*0.59+d[j+2]*0.11;
+      diffSum+=Math.abs(lum1-lum2); cnt++;
+    }
+    bg.busyness=Math.max(0,Math.min(1,(diffSum/Math.max(1,cnt))/40));
+  }catch(e){ bg.busyness=0.5; }
+  return bg.busyness;
+}
+function computeSlotWeights(lineIdx,scene,role,lenBucket,bgBusy){
+  const W={};
+  for(const name in PLACEMENT_SLOTS){
+    let w=SCENE_WEIGHTS[scene][name]??0;
+    if(w<=0){ W[name]=0; continue; }
+    const grp=PLACEMENT_SLOTS[name].group;
+    w*=LEN_MUL[lenBucket][grp];
+    if(name==="center") w*=role.centerMul;
+    if(name==="fullWidth") w*=role.fullMul;
+    if(scene==="B"){
+      if(bgBusy>0.66){ if(grp==="BOTTOM") w*=1.8; else if(name==="center") w*=1.2; else if(grp==="SIDE") w*=0.7; }
+      else if(bgBusy<0.33){ if(name==="center") w*=1.5; else if(grp==="SIDE") w*=1.2; else if(grp==="BOTTOM") w*=0.6; }
+    }
+    W[name]=w;
+  }
+  return W;
+}
+// ---- 曲全体ぶんを1回だけ計算してキャッシュ（行やセクションの編集で破棄） ----
+let _placementByLine=null;
+function invalidatePlacementCache(){ _placementByLine=null; }
+function computePlacementByLine(){
+  if(_placementByLine) return _placementByLine;
+  const n=state.lines.length;
+  const result=new Array(n).fill("center");
+  const zs=secZones();
+  const zones=zs.length?zs:[{idx:0,z:n,name:"",gap:false}];
+  zones.forEach(z=>{
+    if(z.gap) return; // 間奏等は歌詞が無いので配置不要
+    const role=roleOfSectionNameForPlacement(z.name);
+    let pattern=null, patternStep=0, prevSlot=null;
+    for(let i=z.idx;i<z.z;i++){
+      const l=state.lines[i]; if(!l||l.gap) continue;
+      const scene=sceneOfLine(i);
+      const lenB=lenBucketOf(parseEmphasis(l.text).clean.length);
+      const bgBusy=scene==="B"?bgBusyness(pickBg(i)):0.5;
+      const weights=computeSlotWeights(i,scene,role,lenB,bgBusy);
+      if(scene==="A") applyPersonAvoidance(weights,i);
+      let slot;
+      if(prevSlot===null){
+        slot=weightedPickSlot(weights,strSeed(z.name)*0.001+i*13.7+3.3);
+      }else{
+        const changed=hash01(i*77+11)<role.changeProb;
+        if(!changed) slot=prevSlot;
+        else{
+          if(!pattern) pattern=pickMovePattern(strSeed(z.name)+7);
+          if(pattern.seq){
+            patternStep++;
+            slot=pattern.seq[patternStep%pattern.seq.length];
+            if(!(weights[slot]>0)) slot=weightedPickSlot(weights,i*13.7+3.3); // そのシーンでは使えない形なら通常抽選に切替
+          }else slot=weightedPickSlot(weights,i*13.7+9.1);
+        }
+      }
+      result[i]=slot; prevSlot=slot;
+    }
+  });
+  _placementByLine=result;
+  return result;
+}
+function slotOfLine(lineIdx){
+  const arr=computePlacementByLine();
+  return PLACEMENT_SLOTS[arr[lineIdx]]?arr[lineIdx]:"center";
+}
 function pickZone(t,lineIdx,styleOverride){
   const style=styleOverride||$("lyricStyle").value;
   const scale=CH/720;
@@ -2691,37 +2924,12 @@ function pickZone(t,lineIdx,styleOverride){
   if(style==="bottom") return {...base,cx:CW*0.5,maxW:CW*0.86,y:CH*0.72};
   if(style==="overlay") return {...base,cx:CW*0.5,maxW:CW*0.9,y:CH*0.80,baseFs:92*scale,overlay:true}; // 安全圏の中央一番下
   if(style==="arc") return {...base,arc:true};
-  // auto：キャラが実際に占めている矩形から、空いている横スペースを探す
-  if(charRects.length===0) return {...base,cx:CW*0.5,maxW:CW*0.86,y:CH*0.62};
-  // x軸上の占有区間をマージ（素材の透明フチぶん12%は空きとみなす）
-  const iv=charRects.map(r=>[Math.max(0,r.x+r.w*0.12), Math.min(CW,r.x+r.w*0.88)]).sort((a,b)=>a[0]-b[0]);
-  const merged=[];
-  for(const [a,b] of iv){
-    if(merged.length && a<=merged[merged.length-1][1]) merged[merged.length-1][1]=Math.max(merged[merged.length-1][1],b);
-    else merged.push([a,b]);
-  }
-  // 空きギャップを列挙（左端〜、間、〜右端）
-  const gaps=[]; let prev=0;
-  for(const [a,b] of merged){ if(a-prev>0) gaps.push([prev,a]); prev=Math.max(prev,b); }
-  if(CW-prev>0) gaps.push([prev,CW]);
-  const bigGaps=gaps.filter(g=>g[1]-g[0]>=CW*0.24).sort((a,b)=>a[0]-b[0]);
-  if(bigGaps.length>=2){
-    // ★中央キャラなどで左右が空いている → 行ごとに左→右→左…交互に使う
-    const g=(lineIdx%2===0)?bigGaps[0]:bigGaps[bigGaps.length-1];
-    const gw=g[1]-g[0], pad=CW*0.01;
-    return {...base,cx:(g[0]+g[1])/2,maxW:gw-pad*2,y:CH*0.46,
-      baseFs:Math.min(80*scale, 62*scale+gw/CW*48*scale)};
-  }
-  let bestGap=null;
-  for(const g of gaps){ if(!bestGap||g[1]-g[0]>bestGap[1]-bestGap[0]) bestGap=g; }
-  const gapW=bestGap?bestGap[1]-bestGap[0]:0;
-  if(gapW>=CW*0.28){
-    const pad=CW*0.01;
-    return {...base,cx:(bestGap[0]+bestGap[1])/2,maxW:gapW-pad*2,y:CH*0.46,
-      baseFs:Math.min(80*scale, 64*scale+gapW/CW*46*scale)};
-  }
-  // 空きが狭い（大キャラ中央など）→ 安全圏の下段にかぶせスタイルで堂々と乗せる
-  return {...base,cx:CW*0.5,maxW:CW*0.9,y:CH*0.80,baseFs:88*scale,overlay:true};
+  // ★26章：歌詞配置エンジン（GPT統計の重み付き抽選）。曲全体で1回だけ計算してキャッシュする
+  const slotName=computePlacementByLine()[lineIdx]||"center";
+  const slot=PLACEMENT_SLOTS[slotName]||PLACEMENT_SLOTS.center;
+  const role=roleOfSectionNameForPlacement((state.lines[lineIdx]||{}).section);
+  const fs=76*scale*role.fontMul*(slot.fontMul||1);
+  return {...base,cx:slot.cx*CW,maxW:slot.maxW*CW,y:slot.cy*CH,baseFs:Math.min(96*scale,fs)};
 }
 function arcLayout(text,t,lineIdx){
   const scale=CH/720;
@@ -3839,6 +4047,18 @@ function drawFrame(t){
   drawSectionFx(t);
   drawBeatLamp(t);
 }
+/* ★編集操作からプレビューを更新する共通の入口（30章）。
+   従来は各編集欄がdrawFrame(effT())を直接呼んでいたが、これは③のメインcanvasにしか
+   描かないため、②で見ている仮組みプレビュー（miniCanvas）は更新されなかった。
+   「今どちらの画面を見ているか」で描き先を振り分ける。再生中は既存のループに任せて何もしない
+   （二重描画・ちらつきを避けるため）。 */
+function refreshPreview(){
+  if(!$("pane2").classList.contains("hidden")){
+    if(!pv.playing) drawFrame(effT());
+  }else if(!$("pane1").classList.contains("hidden")){
+    if(!mini.playing) renderMini(audio.src?audio.currentTime:0);
+  }
+}
 
 /* ================= 再生・録画 ================= */
 const pv={playing:false,raf:0};
@@ -3851,7 +4071,7 @@ function pvToggle(){
   else{ pv.playing=true; audio.play(); pvLoop(); $("pvPlayBtn").textContent="⏸ 一時停止"; }
 }
 function pvSeek(t){ if(audio.src){ audio.currentTime=t; resetDeco(); drawFrame(t); } }
-function pvSeekRel(d){ if(audio.src){ audio.currentTime=Math.max(0,audio.currentTime+d); resetDeco(); drawFrame(effT()); } }
+function pvSeekRel(d){ if(audio.src){ audio.currentTime=Math.max(0,audio.currentTime+d); resetDeco(); refreshPreview(); } }
 audio.addEventListener("ended",()=>{
   if(rec.active) setTimeout(recStop,300);
   pv.playing=false; $("pvPlayBtn").textContent="▶ 再生";
