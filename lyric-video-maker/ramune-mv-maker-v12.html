@@ -560,6 +560,10 @@ function loadTiming(d){
   if(Array.isArray(d.credits)) state.credits=d.credits;
   state.savedSettings=d.settings||null;
   if(d.settings) applySettings(d.settings);
+  // ★JSONファイルを選び直したとき（自動復元とは別経路）にsectionTextが引き継がれない不具合を修正。
+  //   これまでは起動時の自動復元(restoreAll)だけがsectionTextを個別に復元しており、
+  //   loadTiming自体には復元処理が無かった。今後はloadTimingを通る全ての経路で復元される。
+  if(typeof d.sectionText==="string") $("sectionText").value=d.sectionText;
   if($("sectionText").value.trim()) importSections();
   addGapLines(); // 前奏・間奏・後奏の行番号を自動で振る（手動ボタンは廃止）
   renderLineList();
@@ -2997,9 +3001,14 @@ function drawStickers(t){
         y=Math.max(m,Math.min(CH-m,y));
       }
     }
-    // ---- 出現0.12秒／退場0.20秒（14-5）。退場は「縮小＋透明化」
-    const qi=Math.max(0,Math.min(1,(t-spawnT)/POP_IN)), qo=Math.max(0,Math.min(1,(deathT-t)/POP_OUT));
-    const pop=1+0.22*Math.sin(Math.min(1,qi)*Math.PI)*(1-qi*0.35); // ぷるっと出る
+    // ---- 出現スタイル：「にゅるっと拡大」だけでなく「パッと貼る（ペタッ）」も追加。
+    //   ユーザーの感覚では、シールを貼るような即座の出現の方が主役でよいとのことなので
+    //   ペタッを70%・にゅるっとを30%の比率にした（既存のカテゴリ主従70/30と同じ設計言語）。
+    const isPeta=hash01(sd*6.7)<0.70;
+    const popInDur=isPeta?0.035:POP_IN; // ペタッはほぼ一瞬でフルサイズになる
+    // ---- 退場0.20秒（14-5）。退場は「縮小＋透明化」（出現方式によらず共通）
+    const qi=Math.max(0,Math.min(1,(t-spawnT)/popInDur)), qo=Math.max(0,Math.min(1,(deathT-t)/POP_OUT));
+    const pop=isPeta?1:(1+0.22*Math.sin(Math.min(1,qi)*Math.PI)*(1-qi*0.35)); // ペタッはバウンドしない
     const sc=qi*pop*(0.55+qo*0.45);
     if(sc<=0.01) continue;
     // ---- ボイリング（手描きアニメの「線がプルプルする」現象）
